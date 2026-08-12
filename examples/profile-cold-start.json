@@ -1,0 +1,18 @@
+{
+  "schema_version": "0.1.0",
+  "profile_id": "3a7c1e2d-9b44-4f01-8c6d-77aa1b2c3d4e",
+  "updated_at": "2026-08-08T07:30:00Z",
+  "units": { "length": "cm" },
+  "preferences": [
+    { "category": "shirts", "zone": "overall", "preference": "relaxed", "strength": 0.6, "source": "declared", "confidence": 0.7, "updated_at": "2026-08-08T07:30:00Z" }
+  ],
+  "history": [
+    {
+      "occurred_at": "2026-05-05T00:00:00Z",
+      "garment_ref": { "brand": "Sartoria Esempio", "style_id": "OXF-CLASSIC", "category": "shirts", "size_label": "41", "size_system": "IT" },
+      "outcome": "kept",
+      "source": "user"
+    }
+  ],
+  "disclosure_defaults": { "default_level": "result_only" }
+}

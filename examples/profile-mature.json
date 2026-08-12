@@ -1,0 +1,71 @@
+{
+  "schema_version": "0.1.0",
+  "profile_id": "b0f0b6b6-0f5a-4a9f-9a2e-1d2c3b4a5e6f",
+  "updated_at": "2026-08-01T09:12:00Z",
+  "units": { "length": "cm" },
+  "body": {
+    "measurements": {
+      "chest_circumference": { "value": 100, "unit": "cm", "source": "tape_measured", "confidence": 0.9, "observed_at": "2026-03-14T18:00:00Z", "tolerance": 1.0, "method": "iso_8559-1:bust_chest_girth" },
+      "waist_circumference": { "value": 88, "unit": "cm", "source": "tape_measured", "confidence": 0.85, "observed_at": "2026-03-14T18:00:00Z", "tolerance": 1.5 },
+      "hip_circumference": { "value": 99, "unit": "cm", "source": "tape_measured", "confidence": 0.85, "observed_at": "2026-07-30T09:00:00Z", "tolerance": 1.5 },
+      "shoulder_width": { "value": 46, "unit": "cm", "source": "tape_measured", "confidence": 0.8, "observed_at": "2026-03-14T18:00:00Z", "tolerance": 1.0 },
+      "neck_circumference": { "value": 40, "unit": "cm", "source": "tape_measured", "confidence": 0.9, "observed_at": "2026-03-14T18:00:00Z", "tolerance": 0.5 },
+      "arm_length": { "value": 63, "unit": "cm", "source": "self_reported", "confidence": 0.6, "observed_at": "2026-03-14T18:00:00Z", "tolerance": 2.0 },
+      "inseam": { "value": 81, "unit": "cm", "source": "estimated_from_size_labels", "confidence": 0.4, "observed_at": "2025-09-20T00:00:00Z", "tolerance": 3.0 }
+    },
+    "morphology": {
+      "shoulder_slope": { "value": "average", "source": "self_reported", "confidence": 0.4 },
+      "torso_length": { "value": "above_average", "source": "inferred_from_history", "confidence": 0.55 }
+    }
+  },
+  "preferences": [
+    { "category": "shirts", "zone": "overall", "preference": "regular", "strength": 0.7, "source": "declared", "confidence": 0.8, "updated_at": "2026-01-10T08:00:00Z" },
+    { "category": "shirts", "zone": "shoulders", "preference": "regular", "strength": 1.0, "source": "inferred_from_history", "confidence": 0.7, "updated_at": "2026-07-30T08:00:00Z" },
+    { "category": "knitwear", "zone": "overall", "preference": "relaxed", "strength": 0.6, "source": "declared", "confidence": 0.8, "updated_at": "2026-01-10T08:00:00Z" },
+    { "category": "trousers", "zone": "waist", "preference": "regular", "strength": 0.8, "source": "declared", "confidence": 0.7, "updated_at": "2026-01-10T08:00:00Z" }
+  ],
+  "history": [
+    {
+      "occurred_at": "2026-06-11T00:00:00Z",
+      "garment_ref": { "brand": "Sartoria Esempio", "style_id": "OXF-CLASSIC", "category": "shirts", "size_label": "40", "size_system": "IT" },
+      "outcome": "returned_too_small",
+      "zone_feedback": [
+        { "zone": "shoulders", "verdict": "too_tight" },
+        { "zone": "chest", "verdict": "right" }
+      ],
+      "source": "retailer_import",
+      "import_ref": "gdpr-export-2026-07-02"
+    },
+    {
+      "occurred_at": "2026-06-28T00:00:00Z",
+      "garment_ref": { "brand": "Sartoria Esempio", "style_id": "OXF-CLASSIC", "category": "shirts", "size_label": "41", "size_system": "IT" },
+      "outcome": "kept",
+      "zone_feedback": [
+        { "zone": "shoulders", "verdict": "right" },
+        { "zone": "waist", "verdict": "roomy" }
+      ],
+      "kept_despite": ["waist"],
+      "source": "retailer_import",
+      "import_ref": "gdpr-export-2026-07-02"
+    },
+    {
+      "occurred_at": "2026-04-03T00:00:00Z",
+      "garment_ref": { "brand": "Maglificio Esempio", "style_id": "LAMBSWOOL-CREW", "category": "knitwear", "size_label": "L", "size_system": "alpha" },
+      "outcome": "kept",
+      "zone_feedback": [{ "zone": "overall", "verdict": "right" }],
+      "source": "user"
+    },
+    {
+      "occurred_at": "2026-02-19T00:00:00Z",
+      "garment_ref": { "brand": "Sartoria Esempio", "style_id": "POPLIN-SLIM", "category": "shirts", "size_label": "40", "size_system": "IT" },
+      "outcome": "exchanged_for_larger",
+      "zone_feedback": [{ "zone": "shoulders", "verdict": "too_tight" }],
+      "source": "retailer_import",
+      "import_ref": "gdpr-export-2026-07-02"
+    }
+  ],
+  "disclosure_defaults": {
+    "default_level": "result_only",
+    "never_share": ["hip_circumference"]
+  }
+}

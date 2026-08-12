@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+.venv/
+dist/
+build/
+
+# Licence texts are fetched from the canonical sources, never edited by hand.
+# See LICENSING.md. Uncomment while iterating if you want to avoid committing
+# a half-downloaded file:
+# LICENSE
+# LICENSE-SPEC
+
+# Editor backups
+*.bak
+*~

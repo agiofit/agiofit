@@ -1,0 +1,77 @@
+{
+  "schema_version": "0.1.0",
+  "cut_profile_id": "sartoria-esempio:OXF-CLASSIC:2026",
+  "brand": "Sartoria Esempio",
+  "style_id": "OXF-CLASSIC",
+  "style_name": "Classic Oxford Shirt",
+  "category": "shirts",
+  "cut": "regular",
+  "size_system": "IT",
+  "measurement_method": "flat_laid",
+  "production_tolerance": { "value": 1.0, "unit": "cm" },
+  "critical_zones": ["shoulders", "neck"],
+  "fabric": {
+    "stretch_class": "none",
+    "recovery": "moderate",
+    "composition": "100% cotton"
+  },
+  "intended_ease": {
+    "chest": { "min": 12, "max": 20, "unit": "cm" },
+    "waist": { "min": 12, "max": 26, "unit": "cm" },
+    "shoulders": { "min": 0, "max": 2, "unit": "cm" },
+    "neck": { "min": 1, "max": 2.5, "unit": "cm" },
+    "sleeve_length": { "min": -1, "max": 2.5, "unit": "cm" }
+  },
+  "sizes": [
+    {
+      "size_label": "39",
+      "availability": "in_stock",
+      "finished_measurements": {
+        "chest_width": { "value": 54, "unit": "cm" },
+        "waist_width": { "value": 50, "unit": "cm" },
+        "shoulder_width": { "value": 44.5, "unit": "cm" },
+        "sleeve_length": { "value": 63, "unit": "cm" },
+        "neck_circumference": { "value": 40, "unit": "cm", "tolerance": 0.5 }
+      }
+    },
+    {
+      "size_label": "40",
+      "availability": "in_stock",
+      "finished_measurements": {
+        "chest_width": { "value": 56, "unit": "cm" },
+        "waist_width": { "value": 52, "unit": "cm" },
+        "shoulder_width": { "value": 45.5, "unit": "cm" },
+        "sleeve_length": { "value": 64, "unit": "cm" },
+        "neck_circumference": { "value": 41, "unit": "cm", "tolerance": 0.5 }
+      }
+    },
+    {
+      "size_label": "41",
+      "availability": "in_stock",
+      "finished_measurements": {
+        "chest_width": { "value": 58, "unit": "cm" },
+        "waist_width": { "value": 54, "unit": "cm" },
+        "shoulder_width": { "value": 46.5, "unit": "cm" },
+        "sleeve_length": { "value": 65, "unit": "cm" },
+        "neck_circumference": { "value": 42, "unit": "cm", "tolerance": 0.5 }
+      }
+    },
+    {
+      "size_label": "42",
+      "availability": "low_stock",
+      "finished_measurements": {
+        "chest_width": { "value": 60, "unit": "cm" },
+        "waist_width": { "value": 56, "unit": "cm" },
+        "shoulder_width": { "value": 47.5, "unit": "cm" },
+        "sleeve_length": { "value": 66, "unit": "cm" },
+        "neck_circumference": { "value": 43, "unit": "cm", "tolerance": 0.5 }
+      }
+    }
+  ],
+  "provenance": {
+    "published_by": "brand",
+    "verified": true,
+    "verification_method": "measured on production sample, 3 units per size",
+    "published_at": "2026-02-01T00:00:00Z"
+  }
+}
