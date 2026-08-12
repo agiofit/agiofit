@@ -1,5 +1,7 @@
 # Agio Fit — an open, portable fit profile
 
+[![CI](https://github.com/agiofit/agiofit/actions/workflows/ci.yml/badge.svg)](https://github.com/agiofit/agiofit/actions/workflows/ci.yml)
+
 > **Status: v0.1 draft.** Nothing here is stable. Breaking changes are expected until v1.0.
 
 ## The problem
