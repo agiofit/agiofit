@@ -5,6 +5,7 @@ type: software
 authors:
   - family-names: "Ferraioli"
     given-names: "Antonio"
+    orcid: "https://orcid.org/0009-0009-9344-1975"
 abstract: "An open data model for a portable, person-owned garment fit profile: Fit Profile, Cut Profile and Match Report schemas (JSON Schema 2020-12), specification documents, synthetic examples, and a zero-dependency Python reference implementation."
 doi: 10.5281/zenodo.21922898
 version: 0.1.0
