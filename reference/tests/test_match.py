@@ -98,11 +98,17 @@ def test_result_only_leaks_nothing(mature, shirt):
     out = recommend(mature, shirt, disclosure_level="result_only").to_json()
     assert "explanation" not in out
     assert "alternatives" not in out
-    blob = json.dumps(out)
+    # The substring sweep below is deliberately paranoid, but two fields
+    # legitimately contain arbitrary digits and are not leak channels for
+    # body measurements: the wall-clock timestamp and the 0-1 confidence
+    # score. Left in, they make the test flaky — a run at second :46 puts
+    # "46" into generated_at and trips the shoulders check.
+    swept = {k: v for k, v in out.items() if k not in ("generated_at", "confidence")}
+    blob = json.dumps(swept)
     for measure in ("100", "88", "46"):  # chest, waist, shoulders
         assert measure not in blob
-
-
+        
+        
 def test_explained_level_drops_numeric_ease(mature, shirt):
     out = recommend(mature, shirt, disclosure_level="explained").to_json()
     assert out["explanation"], "explained level must still carry per-zone reasoning"
