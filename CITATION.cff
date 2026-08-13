@@ -1,0 +1,23 @@
+cff-version: 1.2.0
+message: "If you use or reference Agio Fit, please cite it as below."
+title: "Agio Fit"
+type: software
+authors:
+  - family-names: "Ferraioli"
+    given-names: "Antonio"
+abstract: "An open data model for a portable, person-owned garment fit profile: Fit Profile, Cut Profile and Match Report schemas (JSON Schema 2020-12), specification documents, synthetic examples, and a zero-dependency Python reference implementation."
+doi: 10.5281/zenodo.21922898
+version: 0.1.0
+date-released: 2026-08-13
+repository-code: "https://github.com/agiofit/agiofit"
+url: "https://agiofit.org"
+license:
+  - Apache-2.0
+  - CC-BY-4.0
+keywords:
+  - fashion
+  - garment-fit
+  - data-model
+  - json-schema
+  - privacy
+  - portability
