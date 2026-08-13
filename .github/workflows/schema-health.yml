@@ -1,0 +1,63 @@
+name: Schema health
+
+# The strongest public commitment this project makes is that published schema
+# `$id` URLs stay resolvable. The launch already proved the chain
+# (registrar DNS -> GitHub Pages -> TLS) can break silently, so this check
+# turns the promise into an alarm instead of a hope.
+
+on:
+  schedule:
+    - cron: "17 6 * * 1" # weekly, Monday 06:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify published schema $id URLs resolve and self-identify
+        run: |
+          python3 - <<'EOF'
+          import json
+          import sys
+          import urllib.request
+
+          BASE = "https://agiofit.org/schemas/v0.1/"
+          SCHEMAS = [
+              "fit-profile.schema.json",
+              "cut-profile.schema.json",
+              "match-report.schema.json",
+          ]
+
+          failures = []
+          for name in SCHEMAS:
+              url = BASE + name
+              try:
+                  with urllib.request.urlopen(url, timeout=30) as resp:
+                      if resp.status != 200:
+                          failures.append(f"{url}: HTTP {resp.status}")
+                          continue
+                      body = resp.read()
+              except Exception as exc:
+                  failures.append(f"{url}: {exc}")
+                  continue
+              try:
+                  doc = json.loads(body)
+              except ValueError as exc:
+                  failures.append(f"{url}: not valid JSON ({exc})")
+                  continue
+              declared = doc.get("$id")
+              if declared != url:
+                  failures.append(f"{url}: declares $id {declared!r}")
+
+          if failures:
+              print("Schema health check FAILED:")
+              for failure in failures:
+                  print(" -", failure)
+              sys.exit(1)
+
+          print("All published schema $id URLs resolve over HTTPS "
+                "and self-identify correctly.")
+          EOF
