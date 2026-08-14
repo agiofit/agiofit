@@ -27,7 +27,8 @@ Listed rather than hidden. Contributions on any of these are more useful than sc
 
 7. **Anti-abuse.** A portable profile is also a portable target. Inference of health conditions,
    pregnancy or weight change from measurement history is possible and needs thinking about before
-   scale, not after.
+   scale, not after. A first threat model is in `06-threat-model.md`; what remains open is which
+   countermeasures belong in the data model at all.
 
 8. **Assessment words for length zones.** `snug` and `roomy` are girth words. For a sleeve or an
    inseam the honest words are *short* and *long*, and collapsing both onto one scale loses the

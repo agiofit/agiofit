@@ -37,3 +37,4 @@ Three requirements apply to every conformant implementation:
 3. `03-matching.md` — how a match report is produced and explained
 4. `04-privacy.md` — disclosure levels and what must never leave
 5. `05-open-questions.md` — what is unresolved, honestly listed
+6. `06-threat-model.md` — who attacks a portable profile, and what that means for v0.2
