@@ -1,0 +1,104 @@
+name: Obviously wrong recommendation
+description: A body and a garment where the answer is obviously wrong — the most valuable contribution to this repository.
+title: "[wrong-recommendation] "
+labels: ["wrong-recommendation"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Per `CONTRIBUTING.md`, a body and a garment where the recommendation is obviously wrong,
+        reported reproducibly, is the single most valuable contribution here. This form exists to
+        turn your report into a failing test with as little friction as possible.
+
+        "Obviously wrong" means wrong on the model's own terms — negative ease at a zone that
+        cannot stretch, history pushing the result the wrong way, a confident answer built on
+        nothing — not a difference in taste about how loose a shirt should be.
+
+        **Never paste measurements of a real person, yours included.** Start from a real case if
+        you like, then change the numbers until they describe nobody. If the wrongness survives
+        the anonymisation, it was never about the person.
+
+  - type: checkboxes
+    id: synthetic
+    attributes:
+      label: Synthetic data only
+      description: This is a hard rule of the project, not a formality. See `CONTRIBUTING.md`.
+      options:
+        - label: The profile and history below are synthetic. They do not describe a real person, including me.
+          required: true
+
+  - type: dropdown
+    id: failure-kind
+    attributes:
+      label: What makes it obviously wrong
+      description: Pick the closest one. If none fits, pick "Other" and explain under "Expected".
+      options:
+        - Recommends a size that is clearly too small (impossible ease at a critical zone)
+        - Recommends a size that is clearly too large
+        - History biases the result in the wrong direction
+        - Cold start looks too confident, or infers across brands
+        - Confidence is dishonest in some other way
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: fit-profile
+    attributes:
+      label: Fit Profile (synthetic)
+      description: The complete JSON document. It should validate against `schemas/fit-profile.schema.json`.
+      render: json
+    validations:
+      required: true
+
+  - type: textarea
+    id: cut-profile
+    attributes:
+      label: Cut Profile
+      description: The complete JSON document. If it is a repository example used unchanged, name the file instead of pasting it.
+      render: json
+    validations:
+      required: true
+
+  - type: textarea
+    id: command
+    attributes:
+      label: How you ran it
+      description: The exact invocation, so the result can be reproduced without guessing.
+      placeholder: python -m agiofit.cli profile.json cut.json scoped
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected
+      description: What a sensible answer would look like, and — the part that matters — why. "Size 41, because the shoulders make 39 impossible" is a test waiting to be written; "a better size" is not.
+    validations:
+      required: true
+
+  - type: textarea
+    id: got
+    attributes:
+      label: Got
+      description: The match report. Run at `scoped` or `full` so the numbers are visible — that is fine here precisely because the data is synthetic.
+      render: json
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      placeholder: Python 3.12, commit abc1234 (or v0.1.0)
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: follow-up
+    attributes:
+      label: Follow-up
+      options:
+        - label: I am willing to open a PR adding this case as a failing test in `reference/tests/test_match.py` (DCO sign-off required).
+          required: false
