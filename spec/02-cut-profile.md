@@ -43,3 +43,18 @@ durability and circularity, and fit data is not obviously inside it.
 Whether measurements fall within the DPP perimeter is an open question, not a settled one. This
 specification therefore defines the document standalone and provides `provenance.dpp_id` as the
 link, so that the two can converge later without either waiting for the other.
+
+## Relationship to EN 13402
+
+EN 13402 is the European labelling standard for garment sizes: a controlled vocabulary of body
+dimensions, in centimetres, expressed as intervals the garment is designed for. It is the body
+side of a label, not the garment side of a specification. It carries no finished measurements, no
+intended ease, no grading, no stretch, no provenance — and its adoption is voluntary and, two
+decades on, thin.
+
+The two are complementary rather than competing. An EN 13402 label is, conceptually, the brand's
+finished measurements minus its intended ease, already collapsed into a single body interval. This
+specification keeps those two quantities separate, because the separation is what makes a
+recommendation explainable and correctable. Matching by label interval alone is the size-chart
+approach this project exists to replace; whether and how a label can serve as a degraded signal
+for a garment that has no Cut Profile is left to a future version.
