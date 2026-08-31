@@ -34,6 +34,26 @@ that ignores this produces answers more precise than the physical world supports
 
 **`critical_zones`.** Where a mismatch cannot be tolerated or altered. Overrides category defaults.
 
+## Identifying fields
+
+None of these affect how a garment is compared against a body. They exist so that two documents
+about the same garment can be recognised as such, and so that a person reading the file can tell
+what it describes.
+
+**`brand`.** The producer's name, as free text. A consumer that learns a size offset from a
+person's history keys it on this string, so two spellings of the same name are two different
+brands to it. There is no registry and no normalisation. This is a limitation, not a design.
+
+**`style_id`.** The producer's own identifier for the model. Two garments sharing it are the same
+design in the same cut, which is stronger evidence of comparability than two garments merely
+sharing a brand.
+
+**`style_name`.** Human-readable. For people, not for matching.
+
+**`gtin`.** The commercial barcode. Not used for matching; present as the link to retail systems
+for consumers that have one. The schema does not verify the check digit, so a malformed value is
+accepted.
+
 ## Relationship to the Digital Product Passport
 
 The European DPP under ESPR is the natural long-term carrier for this document: it is already
