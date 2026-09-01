@@ -54,6 +54,43 @@ sharing a brand.
 for consumers that have one. The schema does not verify the check digit, so a malformed value is
 accepted.
 
+## Provenance
+
+`published_by` is required. It names who is making the claim, and nothing else. It is not a
+quality score, and this specification deliberately assigns no weight to its values.
+
+**`brand`.** The party that designs and sells the garment under its own name. Its numbers are
+usually a design specification: what the garment is meant to be.
+
+**`manufacturer`.** The party that produced it. Where production drifts from the specification,
+the manufacturer knows the actual cut better than the brand does.
+
+**`retailer`.** A party that sells the garment without having made it. Values are typically
+copied from the brand, occasionally re-measured.
+
+**`marketplace_seller`.** An individual or shop selling a specific garment, usually second-hand.
+The numbers come from an item in hand.
+
+**`community`.** Measured by someone with no stake in selling it, often for a shared catalogue.
+
+**`measured_by_owner`.** Measured by the person who owns the garment.
+
+These are not a ranking, and reading them as one is the most likely mistake. A brand
+specification is a statement of intent; a measured garment is an observation. Each is better
+than the other at a different question. A brand may publish numbers its production does not
+hold to. A person with a tape measure reports what one garment actually is, but a Cut Profile
+describes a model, and models vary between units by more than most people expect.
+
+The reason no weight is given here is structural rather than cautious. Provenance is declared
+once for a whole document, while reliability belongs to each measurement. Weighting the field
+would weight the label on the file instead of the numbers inside it. A consumer is free to
+weight it anyway, and should say so in its output.
+
+**`verified`.** Self-asserted. Setting it to true claims that an independent check exists, which
+`verification_method` should then describe. Nothing in this version prevents anyone from setting
+it, so a consumer should read it as a claim and not as a fact. Provenance that can be checked
+rather than claimed is deferred to a later version.
+
 ## Relationship to the Digital Product Passport
 
 The European DPP under ESPR is the natural long-term carrier for this document: it is already
