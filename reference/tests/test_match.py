@@ -103,7 +103,7 @@ def test_result_only_leaks_nothing(mature, shirt):
     # body measurements: the wall-clock timestamp and the 0-1 confidence
     # score. Left in, they make the test flaky — a run at second :46 puts
     # "46" into generated_at and trips the shoulders check.
-    swept = {k: v for k, v in out.items() if k not in ("generated_at", "confidence")}
+    swept = {k: v for k, v in out.items() if k not in ("computed_at", "confidence")}
     blob = json.dumps(swept)
     for measure in ("100", "88", "46"):  # chest, waist, shoulders
         assert measure not in blob
