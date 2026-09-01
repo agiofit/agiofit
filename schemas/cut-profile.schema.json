@@ -105,6 +105,19 @@
       "description": "Zones where a mismatch cannot be tolerated or altered — shoulders on a tailored jacket, rise on trousers. Overrides the category defaults used by the reference implementation.",
       "items": { "type": "string" }
     },
+	"derived_from": {
+      "type": "object",
+      "description": "The profile this one was built from, when there is one. Most profiles derive from nothing. Asserted in good faith: this document carries no identity, so nothing prevents a third party from claiming to supersede a profile that is not theirs. Verifiable provenance is deferred to a later version.",
+      "required": ["cut_profile_id", "relationship"],
+      "additionalProperties": false,
+      "properties": {
+        "cut_profile_id": { "type": "string" },
+        "relationship": {
+          "description": "supersedes: the earlier profile should no longer be used to recommend a size, although it remains readable and is not withdrawn. extends: both profiles remain valid and this one carries more measurements.",
+          "enum": ["supersedes", "extends"]
+        }
+      }
+    },
     "provenance": {
       "type": "object",
       "required": ["published_by"],
