@@ -54,6 +54,33 @@ sharing a brand.
 for consumers that have one. The schema does not verify the check digit, so a malformed value is
 accepted.
 
+## Cut and shape
+
+`cut` is descriptive. It is there so a person reading the file gets a quick sense of the
+garment, and a consumer should not compute with it.
+
+Three reasons, and the first is the one that matters. Fitted is not a property of a garment;
+it is a relation between a garment and a body. The same shirt is very fitted on one person and
+oversized on another. Someone measuring their own garment and reporting how it sits on them is
+describing themselves, not the item, which is both unreliable for anyone else and a small leak
+of body information into a public document about a garment. Only a party that knows the design
+intent can state it well.
+
+Second, fit belongs to zones and `cut` is one value for a whole garment. A jacket cut close at
+the waist and generous across the chest has no place on a single scale.
+
+Third, the values measure one thing only, the amount of ease. Half the words the trade actually
+uses describe shape rather than amount: boxy, tapered, cropped, straight, dropped shoulder.
+Adding them to the enum would not help, because they are not points on the same axis.
+
+Shape is already expressible, and better. A garment's shape is the profile of its ease across
+zones, which is exactly what `intended_ease` carries: a boxy shirt is one that allows more ease
+at the waist than at the chest, and that is legible in the numbers without anyone needing to
+share a vocabulary. A brand wanting to say its garment is boxy should say it there.
+
+What neither field expresses is where a seam sits. A dropped shoulder, a raised waist or the
+shape of a sleeve head are positions, not amounts, and this version does not carry them.
+
 ## Provenance
 
 `published_by` is required. It names who is making the claim, and nothing else. It is not a
