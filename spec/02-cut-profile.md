@@ -54,6 +54,91 @@ sharing a brand.
 for consumers that have one. The schema does not verify the check digit, so a malformed value is
 accepted.
 
+## Measurement names
+
+The keys of `finished_measurements` are the vocabulary two documents share. A name only earns a
+place in the standard list if this specification can say where to put the tape, precisely enough
+that two people measuring the same garment arrive at the same number. Anything else belongs
+under the `x_` prefix, which the key pattern reserves for exactly this.
+
+The suffix states what is done with the tape, and predicts whether the number is half a
+circumference:
+
+- `_width` is measured flat and across, and is half the circumference
+- `_circumference` is the whole way round
+- `_length` runs along the garment
+- no suffix is used only where the trade has one universal word
+
+The garment is laid flat, fastened, and not stretched. Widths are taken perpendicular to the
+centre line.
+
+**`chest_width`.** Across, from armhole seam to armhole seam, about 2 cm below the armhole.
+
+**`waist_width`.** Across, at the narrowest point. Where the garment does not narrow, halfway
+between armhole and hem.
+
+**`hip_width`.** On trousers and skirts, across at 20 cm below the waistband. On upper garments,
+across at the hem.
+
+**`thigh_width`.** Trousers folded with the legs together, across from the crotch point,
+perpendicular to the leg fold.
+
+**`knee_width`.** Across at the midpoint of the inseam.
+
+**`calf_width`.** Across at the widest point below the knee.
+
+**`hem_width`.** Across the opening at the bottom of a leg or skirt.
+
+**`sleeve_width`.** Across the sleeve at its widest point below the armhole.
+
+**`cuff_width`.** Across the cuff opening, fastened on the button normally used.
+
+**`neck_circumference`.** Collar fastened and laid flat, measured along the collar from the
+centre of the button to the centre of the buttonhole. This is the whole circumference, not half
+of it, despite the garment being flat.
+
+**`shoulder_width`.** From shoulder seam to shoulder seam across the back. This is a straight
+line and not half of anything, so it is the one exception to what `_width` means here; the name
+is kept because the trade uses it. A raglan or kimono garment has no shoulder seams and should
+leave this out rather than estimate.
+
+**`sleeve_length`.** From the shoulder seam to the edge of the cuff, following the sleeve. On a
+raglan, from the base of the collar, which should be said in a note.
+
+**`inseam`.** Along the inner seam, from where the crotch seams meet to the bottom of the leg.
+
+**`outseam`.** Along the outer seam, from the top of the waistband to the bottom of the leg.
+
+**`front_rise`.** Along the front, from the crotch seam to the top of the waistband.
+
+**`back_rise`.** Along the back, from the crotch seam to the top of the waistband. Front and
+back rise are separate names because they differ, and the difference is much of what
+distinguishes one trouser cut from another.
+
+### On names not in this list
+
+Two that a reader may expect are missing on purpose. There is no `armhole`, because a tape taken
+straight across and a tape followed round the curve give different numbers and this specification
+cannot yet say which is meant. There is no `total_length`, because it is measured from the
+shoulder point by some and from the base of the neck by others, and on trousers it would name
+the same measurement as `outseam`.
+
+There is also no `bust_width`. A garment has a width at the armholes and that width is
+`chest_width` whatever body goes into it. Bust and chest are a distinction between bodies, not
+between garments.
+
+Footwear has no names here. A shoe is measured by internal length and by fit around the foot,
+neither of which is a width or a length in the sense used above, and this specification cannot
+yet define them.
+
+### These definitions are not yet proven
+
+They were written from how the trade publishes its own measurements and from internal
+consistency, not from a table with a tape on it. They have not been checked against sewing or
+pattern-making practice. Two people measuring the same garment and getting different numbers is
+the failure that matters here, and reporting one is the most useful contribution this version
+can receive.
+
 ## Cut and shape
 
 `cut` is descriptive. It is there so a person reading the file gets a quick sense of the
