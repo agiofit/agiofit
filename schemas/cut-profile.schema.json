@@ -5,6 +5,29 @@
   "description": "How a specific garment is actually cut, size by size. The counterpart a Fit Profile is matched against.",
   "type": "object",
   "required": ["schema_version", "cut_profile_id", "category", "size_system", "sizes", "measurement_method", "provenance"],
+  "$defs": {
+    "zone": {
+      "description": "The shared zone vocabulary. Kept identical to the enum of the same name in the Fit Profile schema, by copy rather than by reference so that a Cut Profile can be validated on its own; a test in the reference implementation fails if the two ever diverge.",
+      "enum": [
+        "overall",
+        "neck",
+        "shoulders",
+        "chest",
+        "bust",
+        "waist",
+        "hip",
+        "thigh",
+        "calf",
+        "sleeve_length",
+        "arm_width",
+        "inseam",
+        "rise",
+        "total_length",
+        "foot_length",
+        "foot_width"
+      ]
+    }
+  },
   "additionalProperties": false,
   "properties": {
     "schema_version": { "const": "0.1.0" },
@@ -83,7 +106,12 @@
     "intended_ease": {
       "type": "object",
       "description": "The ease the designer intended at each zone, as a range. Where absent, an implementation falls back to a category default and MUST lower confidence accordingly.",
-      "propertyNames": { "pattern": "^(x_)?[a-z][a-z0-9_]*$" },
+      "propertyNames": {
+        "anyOf": [
+          { "$ref": "#/$defs/zone" },
+          { "pattern": "^x_[a-z][a-z0-9_]*$" }
+        ]
+      },
       "additionalProperties": {
         "type": "object",
         "required": ["min", "max", "unit"],
@@ -126,7 +154,12 @@
     "critical_zones": {
       "type": "array",
       "description": "Zones where a mismatch cannot be tolerated or altered — shoulders on a tailored jacket, rise on trousers. Overrides the category defaults used by the reference implementation.",
-      "items": { "type": "string" }
+      "items": {
+        "anyOf": [
+          { "$ref": "#/$defs/zone" },
+          { "pattern": "^x_[a-z][a-z0-9_]*$" }
+        ]
+      }
     },
 	"derived_from": {
       "type": "object",
