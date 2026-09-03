@@ -47,8 +47,8 @@
       "enum": ["EU", "IT", "FR", "UK", "US", "JP", "alpha", "numeric_waist_inseam", "brand_specific"]
     },
     "measurement_method": {
-      "enum": ["flat_laid", "circumference", "iso_8559", "brand_defined"],
-      "description": "Flat-laid measurements are half-circumferences and MUST be doubled before comparison with body circumferences. Getting this wrong silently produces answers that are off by a factor of two, which is why it is required."
+      "enum": ["flat_laid", "circumference"],
+      "description": "Flat-laid measurements are half-circumferences and MUST be doubled before comparison with body circumferences. Getting this wrong silently produces answers that are off by a factor of two, which is why it is required. There are two values and no third: where the tape went is something whoever publishes the numbers is expected to know, and a profile that cannot say is not ready to be published. Earlier drafts also allowed iso_8559, which is a standard for measuring bodies and belongs in a Fit Profile, and brand_defined, which named a method no reader could ever learn."
     },
     "sizes": {
       "type": "array",
