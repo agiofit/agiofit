@@ -147,6 +147,22 @@ def test_flat_laid_measurements_are_doubled(mature, shirt):
     assert chest["ease_cm"] > 5  # would be deeply negative if doubling were skipped
 
 
+def test_unused_measurements_are_declared(mature, shirt):
+    # A measurement the implementation cannot map used to vanish without trace.
+    # Naming it is what makes the answer correctable by whoever wrote the profile.
+    import copy
+
+    assert not any("does not use" in c for c in recommend(mature, shirt).to_json()["caveats"])
+
+    extended = copy.deepcopy(shirt)
+    extended["sizes"][0]["finished_measurements"]["x_yoke_width"] = {
+        "value": 42.0,
+        "unit": "cm",
+    }
+    caveats = recommend(mature, extended).to_json()["caveats"]
+    assert any("x_yoke_width" in c for c in caveats)
+
+
 def test_missing_garment_data_lowers_confidence(mature, shirt):
     stripped = json.loads(json.dumps(shirt))
     for size in stripped["sizes"]:

@@ -192,6 +192,19 @@ def recommend(profile: dict, garment: dict, disclosure_level: str = "explained")
     improve_by: list[str] = []
     fallback_zones = 0
 
+    # A measurement this implementation has no mapping for is silently dropped
+    # otherwise. Saying so is the difference between an answer that can be
+    # corrected and one that only looks complete.
+    known_keys = {m.garment_key for m in ZONE_MAPPINGS}
+    unused_keys = sorted(
+        {
+            key
+            for size in garment.get("sizes", [])
+            for key in (size.get("finished_measurements") or {})
+        }
+        - known_keys
+    )
+
     scored: list[tuple[float, str, list[ExplanationLine]]] = []
 
     for size in garment.get("sizes", []):
@@ -321,6 +334,12 @@ def recommend(profile: dict, garment: dict, disclosure_level: str = "explained")
     if fallback_zones:
         caveats.append(
             "The garment does not publish an intended ease for every zone; category defaults were used."
+        )
+    if unused_keys:
+        caveats.append(
+            "The garment publishes measurements this implementation does not use: "
+            + ", ".join(unused_keys)
+            + "."
         )
     if any(line.assessment == "unknown" for line in best_lines):
         caveats.append("Some zones could not be evaluated because the profile has no matching measurement.")
