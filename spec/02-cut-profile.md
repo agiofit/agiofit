@@ -54,6 +54,155 @@ sharing a brand.
 for consumers that have one. The schema does not verify the check digit, so a malformed value is
 accepted.
 
+## Measurement names
+
+The keys of `finished_measurements` are the vocabulary two documents share. A name only earns a
+place in the standard list if this specification can say where to put the tape, precisely enough
+that two people measuring the same garment arrive at the same number. Anything else belongs
+under the `x_` prefix, which the key pattern reserves for exactly this.
+
+The suffix states what is done with the tape, and predicts whether the number is half a
+circumference:
+
+- `_width` is measured flat and across, and is half the circumference
+- `_circumference` is the whole way round
+- `_length` runs along the garment
+- no suffix is used only where the trade has one universal word
+
+The garment is laid flat, fastened, and not stretched. Widths are taken perpendicular to the
+centre line.
+
+**`chest_width`.** Across, from armhole seam to armhole seam, about 2 cm below the armhole.
+
+**`waist_width`.** Across, at the narrowest point. Where the garment does not narrow, halfway
+between armhole and hem.
+
+**`hip_width`.** On trousers and skirts, across at 20 cm below the waistband. On upper garments,
+across at the hem.
+
+**`thigh_width`.** Trousers folded with the legs together, across from the crotch point,
+perpendicular to the leg fold.
+
+**`knee_width`.** Across at the midpoint of the inseam.
+
+**`calf_width`.** Across at the widest point below the knee.
+
+**`hem_width`.** Across the opening at the bottom of a leg or skirt.
+
+**`sleeve_width`.** Across the sleeve at its widest point below the armhole.
+
+**`cuff_width`.** Across the cuff opening, fastened on the button normally used.
+
+**`neck_circumference`.** Collar fastened and laid flat, measured along the collar from the
+centre of the button to the centre of the buttonhole. This is the whole circumference, not half
+of it, despite the garment being flat.
+
+**`shoulder_width`.** From shoulder seam to shoulder seam across the back. This is a straight
+line and not half of anything, so it is the one exception to what `_width` means here; the name
+is kept because the trade uses it. A raglan or kimono garment has no shoulder seams and should
+leave this out rather than estimate.
+
+**`sleeve_length`.** From the shoulder seam to the edge of the cuff, following the sleeve. On a
+raglan, from the base of the collar, which should be said in a note.
+
+**`inseam`.** Along the inner seam, from where the crotch seams meet to the bottom of the leg.
+
+**`outseam`.** Along the outer seam, from the top of the waistband to the bottom of the leg.
+
+**`front_rise`.** Along the front, from the crotch seam to the top of the waistband.
+
+**`back_rise`.** Along the back, from the crotch seam to the top of the waistband. Front and
+back rise are separate names because they differ, and the difference is much of what
+distinguishes one trouser cut from another.
+
+### On names not in this list
+
+Two that a reader may expect are missing on purpose. There is no `armhole`, because a tape taken
+straight across and a tape followed round the curve give different numbers and this specification
+cannot yet say which is meant. There is no `total_length`, because it is measured from the
+shoulder point by some and from the base of the neck by others, and on trousers it would name
+the same measurement as `outseam`.
+
+There is also no `bust_width`. A garment has a width at the armholes and that width is
+`chest_width` whatever body goes into it. Bust and chest are a distinction between bodies, not
+between garments.
+
+Footwear has no names here. A shoe is measured by internal length and by fit around the foot,
+neither of which is a width or a length in the sense used above, and this specification cannot
+yet define them.
+
+### These definitions are not yet proven
+
+They were written from how the trade publishes its own measurements and from internal
+consistency, not from a table with a tape on it. They have not been checked against sewing or
+pattern-making practice. Two people measuring the same garment and getting different numbers is
+the failure that matters here, and reporting one is the most useful contribution this version
+can receive.
+
+## Cut and shape
+
+`cut` is descriptive. It is there so a person reading the file gets a quick sense of the
+garment, and a consumer should not compute with it.
+
+Three reasons, and the first is the one that matters. Fitted is not a property of a garment;
+it is a relation between a garment and a body. The same shirt is very fitted on one person and
+oversized on another. Someone measuring their own garment and reporting how it sits on them is
+describing themselves, not the item, which is both unreliable for anyone else and a small leak
+of body information into a public document about a garment. Only a party that knows the design
+intent can state it well.
+
+Second, fit belongs to zones and `cut` is one value for a whole garment. A jacket cut close at
+the waist and generous across the chest has no place on a single scale.
+
+Third, the values measure one thing only, the amount of ease. Half the words the trade actually
+uses describe shape rather than amount: boxy, tapered, cropped, straight, dropped shoulder.
+Adding them to the enum would not help, because they are not points on the same axis.
+
+Shape is already expressible, and better. A garment's shape is the profile of its ease across
+zones, which is exactly what `intended_ease` carries: a boxy shirt is one that allows more ease
+at the waist than at the chest, and that is legible in the numbers without anyone needing to
+share a vocabulary. A brand wanting to say its garment is boxy should say it there.
+
+What neither field expresses is where a seam sits. A dropped shoulder, a raised waist or the
+shape of a sleeve head are positions, not amounts, and this version does not carry them.
+
+## Provenance
+
+`published_by` is required. It names who is making the claim, and nothing else. It is not a
+quality score, and this specification deliberately assigns no weight to its values.
+
+**`brand`.** The party that designs and sells the garment under its own name. Its numbers are
+usually a design specification: what the garment is meant to be.
+
+**`manufacturer`.** The party that produced it. Where production drifts from the specification,
+the manufacturer knows the actual cut better than the brand does.
+
+**`retailer`.** A party that sells the garment without having made it. Values are typically
+copied from the brand, occasionally re-measured.
+
+**`marketplace_seller`.** An individual or shop selling a specific garment, usually second-hand.
+The numbers come from an item in hand.
+
+**`community`.** Measured by someone with no stake in selling it, often for a shared catalogue.
+
+**`measured_by_owner`.** Measured by the person who owns the garment.
+
+These are not a ranking, and reading them as one is the most likely mistake. A brand
+specification is a statement of intent; a measured garment is an observation. Each is better
+than the other at a different question. A brand may publish numbers its production does not
+hold to. A person with a tape measure reports what one garment actually is, but a Cut Profile
+describes a model, and models vary between units by more than most people expect.
+
+The reason no weight is given here is structural rather than cautious. Provenance is declared
+once for a whole document, while reliability belongs to each measurement. Weighting the field
+would weight the label on the file instead of the numbers inside it. A consumer is free to
+weight it anyway, and should say so in its output.
+
+**`verified`.** Self-asserted. Setting it to true claims that an independent check exists, which
+`verification_method` should then describe. Nothing in this version prevents anyone from setting
+it, so a consumer should read it as a claim and not as a fact. Provenance that can be checked
+rather than claimed is deferred to a later version.
+
 ## Relationship to the Digital Product Passport
 
 The European DPP under ESPR is the natural long-term carrier for this document: it is already

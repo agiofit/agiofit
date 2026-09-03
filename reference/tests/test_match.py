@@ -94,21 +94,37 @@ def test_every_report_is_correctable(mature, shirt):
 
 # --------------------------------------------------------------------- privacy behaviour
 
+# The ten keys a result_only report may carry. Pinned as a set because a leak
+# arrives as a new key, not as a new digit: widening this is a deliberate act and
+# has to be argued for in the diff that widens it.
+RESULT_ONLY_KEYS = {
+    "schema_version",
+    "cut_profile_id",
+    "computed_at",
+    "disclosure_level",
+    "recommended_size",
+    "confidence",
+    "correctable",
+    "based_on",
+    "caveats",
+    "improve_by",
+}
+
+
 def test_result_only_leaks_nothing(mature, shirt):
     out = recommend(mature, shirt, disclosure_level="result_only").to_json()
-    assert "explanation" not in out
-    assert "alternatives" not in out
-    # The substring sweep below is deliberately paranoid, but two fields
-    # legitimately contain arbitrary digits and are not leak channels for
-    # body measurements: the wall-clock timestamp and the 0-1 confidence
-    # score. Left in, they make the test flaky — a run at second :46 puts
-    # "46" into generated_at and trips the shoulders check.
-    swept = {k: v for k, v in out.items() if k not in ("generated_at", "confidence")}
-    blob = json.dumps(swept)
+    assert set(out) == RESULT_ONLY_KEYS
+
+    # Free prose is the one allowed field a measurement could travel inside, so it
+    # is the only place worth sweeping for digits. Sweeping the whole document
+    # instead collides with the timestamp, the confidence score, the signal counts
+    # and any size label that happens to be a number: Italian sizes reach 46, which
+    # is also the shoulder measurement below.
+    prose = " ".join(out["caveats"] + out["improve_by"])
     for measure in ("100", "88", "46"):  # chest, waist, shoulders
-        assert measure not in blob
-        
-        
+        assert measure not in prose
+
+
 def test_explained_level_drops_numeric_ease(mature, shirt):
     out = recommend(mature, shirt, disclosure_level="explained").to_json()
     assert out["explanation"], "explained level must still carry per-zone reasoning"
@@ -129,6 +145,22 @@ def test_flat_laid_measurements_are_doubled(mature, shirt):
     report = recommend(mature, shirt, disclosure_level="scoped").to_json()
     chest = next(l for l in report["explanation"] if l["zone"] == "chest")
     assert chest["ease_cm"] > 5  # would be deeply negative if doubling were skipped
+
+
+def test_unused_measurements_are_declared(mature, shirt):
+    # A measurement the implementation cannot map used to vanish without trace.
+    # Naming it is what makes the answer correctable by whoever wrote the profile.
+    import copy
+
+    assert not any("does not use" in c for c in recommend(mature, shirt).to_json()["caveats"])
+
+    extended = copy.deepcopy(shirt)
+    extended["sizes"][0]["finished_measurements"]["x_yoke_width"] = {
+        "value": 42.0,
+        "unit": "cm",
+    }
+    caveats = recommend(mature, extended).to_json()["caveats"]
+    assert any("x_yoke_width" in c for c in caveats)
 
 
 def test_missing_garment_data_lowers_confidence(mature, shirt):
