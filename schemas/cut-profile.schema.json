@@ -38,7 +38,30 @@
           "size_label": { "type": "string" },
           "finished_measurements": {
             "type": "object",
-            "propertyNames": { "pattern": "^(x_)?[a-z][a-z0-9_]*$" },
+            "description": "Keys are the shared measurement vocabulary defined in the specification, which states where to put the tape for each. A name outside that list is not a dialect but an error, so it is rejected here; a measurement the vocabulary has no name for belongs under the x_ prefix, where it stays valid and is visibly an extension.",
+            "propertyNames": {
+              "anyOf": [
+                { "enum": [
+                  "back_rise",
+                  "calf_width",
+                  "chest_width",
+                  "cuff_width",
+                  "front_rise",
+                  "hem_width",
+                  "hip_width",
+                  "inseam",
+                  "knee_width",
+                  "neck_circumference",
+                  "outseam",
+                  "shoulder_width",
+                  "sleeve_length",
+                  "sleeve_width",
+                  "thigh_width",
+                  "waist_width"
+                ] },
+                { "pattern": "^x_[a-z][a-z0-9_]*$" }
+              ]
+            },
             "additionalProperties": {
               "type": "object",
               "required": ["value", "unit"],
