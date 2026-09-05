@@ -221,6 +221,7 @@ def recommend(profile: dict, garment: dict, disclosure_level: str = "explained")
     caveats: list[str] = []
     improve_by: list[str] = []
     fallback_zones = 0
+    reversed_ease_zones: set[str] = set()
 
     # A measurement this implementation has no mapping for is silently dropped
     # otherwise. Saying so is the difference between an answer that can be
@@ -268,8 +269,17 @@ def recommend(profile: dict, garment: dict, disclosure_level: str = "explained")
             b_cm = _cm(bm["value"], bm["unit"])
             ease = g_cm - b_cm
 
-            if mapping.zone in declared_ease:
-                band = declared_ease[mapping.zone]
+            band = declared_ease.get(mapping.zone)
+            if band is not None and _cm(band["min"], band["unit"]) > _cm(
+                band["max"], band["unit"]
+            ):
+                # An empty interval is not a typo whose intention is known: it is a
+                # document asserting something impossible. Swapping the two numbers
+                # would be guessing, so the declared ease is treated as absent and
+                # the fallback is paid for like any other.
+                reversed_ease_zones.add(mapping.zone)
+                band = None
+            if band is not None:
                 lo = _cm(band["min"], band["unit"])
                 hi = _cm(band["max"], band["unit"])
             else:
@@ -376,6 +386,13 @@ def recommend(profile: dict, garment: dict, disclosure_level: str = "explained")
     if fallback_zones:
         caveats.append(
             "The garment does not publish an intended ease for every zone; category defaults were used."
+        )
+    if reversed_ease_zones:
+        caveats.append(
+            "The garment declares an intended ease whose minimum exceeds its maximum, "
+            "so no value could satisfy it. Category defaults were used instead for: "
+            + ", ".join(sorted(reversed_ease_zones))
+            + "."
         )
     if unused_keys:
         caveats.append(

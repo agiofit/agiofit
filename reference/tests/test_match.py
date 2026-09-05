@@ -147,6 +147,35 @@ def test_flat_laid_measurements_are_doubled(mature, shirt):
     assert chest["ease_cm"] > 5  # would be deeply negative if doubling were skipped
 
 
+def test_a_reversed_ease_band_falls_back_and_says_so(mature, shirt):
+    # min above max describes an interval no value can satisfy. Swapping the two
+    # would be guessing at an intention; treating the band as absent is the same
+    # fallback the spec already requires when the field is missing.
+    import copy
+
+    garment = copy.deepcopy(shirt)
+    garment["intended_ease"]["chest"] = {"min": 12.0, "max": 8.0, "unit": "cm"}
+    out = recommend(mature, garment).to_json()
+
+    assert any("minimum exceeds its maximum" in c for c in out["caveats"])
+    assert out["confidence"] < recommend(mature, shirt).to_json()["confidence"]
+    # The zone must not be judged against the impossible band.
+    chest = [l for l in out["explanation"] if l["zone"] == "chest"][0]
+    assert chest["assessment"] != "too_loose"
+
+
+def test_a_single_point_ease_band_is_left_alone(mature, shirt):
+    # min == max claims a precision no production line has, but it is coherent.
+    # Judging the value rather than its consistency is not this check's job.
+    import copy
+
+    garment = copy.deepcopy(shirt)
+    garment["intended_ease"]["chest"] = {"min": 10.0, "max": 10.0, "unit": "cm"}
+    out = recommend(mature, garment).to_json()
+
+    assert not any("minimum exceeds its maximum" in c for c in out["caveats"])
+
+
 def _returned(shirt, label, outcome="returned_too_small"):
     return {
         "occurred_at": "2026-07-01T00:00:00Z",
