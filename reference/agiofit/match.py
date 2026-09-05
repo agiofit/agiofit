@@ -364,6 +364,9 @@ def recommend(profile: dict, garment: dict, disclosure_level: str = "explained")
             caveats=(
                 ["No zone could be compared: the profile has no measurements this garment can be matched against."]
                 + (["Answer derived from past purchases alone."] if label else [])
+                # Explanation is withheld at result_only, so a reason that lives only
+                # there is a reason the reader never gets.
+                + [n for n in notes if "size system" in n]
             ),
             improve_by=_improvements(body, profile, garment),
             computed_at=computed_at,
@@ -505,6 +508,18 @@ def _improvements(body: dict, profile: dict, garment: dict) -> list[str]:
     return out
 
 
+def _same_size_system(ref: dict, garment: dict) -> bool:
+    """False only when both sides name a system and the two disagree.
+
+    A label means nothing without its system: a 42 is a different garment in IT, US
+    and UK. The field is optional inside garment_ref, so absence is not treated as
+    conflict; dropping entries that simply do not say would throw away usable
+    history on no evidence.
+    """
+    a, b = ref.get("size_system"), garment.get("size_system")
+    return not (a and b and a != b)
+
+
 def _history_only_size(profile: dict, garment: dict) -> tuple[str | None, float, list[str]]:
     """Guess a size from past outcomes alone, with no body measurements at all.
 
@@ -522,10 +537,14 @@ def _history_only_size(profile: dict, garment: dict) -> tuple[str | None, float,
         "exchanged_for_smaller": -1,
     }
 
+    crossed_systems = False
     candidates: list[tuple[str, str, float]] = []  # (occurred_at, label, weight)
     for item in profile.get("history", []):
         ref = item.get("garment_ref", {})
         if ref.get("brand") != brand or ref.get("category") != category:
+            continue
+        if not _same_size_system(ref, garment):
+            crossed_systems = True
             continue
         if ref.get("size_label") not in labels:
             continue
@@ -539,7 +558,13 @@ def _history_only_size(profile: dict, garment: dict) -> tuple[str | None, float,
         candidates.append((item.get("occurred_at", ""), labels[idx], 1.5 if same_style else 1.0))
 
     if not candidates:
-        return None, 0.0, ["No usable purchase history for this brand and category."]
+        notes = ["No usable purchase history for this brand and category."]
+        if crossed_systems:
+            notes.append(
+                "History for this brand exists but is labelled in a different size "
+                "system, so it was not used."
+            )
+        return None, 0.0, notes
 
     candidates.sort(reverse=True)  # most recent first
     scores: dict[str, float] = {}

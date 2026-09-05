@@ -147,6 +147,38 @@ def test_flat_laid_measurements_are_doubled(mature, shirt):
     assert chest["ease_cm"] > 5  # would be deeply negative if doubling were skipped
 
 
+def test_history_in_another_size_system_is_not_used(cold, shirt):
+    # A label means nothing without its system: a 42 is a different garment in IT,
+    # US and UK. The cold start path matches labels by position, so crossing
+    # systems there would silently line up sizes that have nothing in common.
+    import copy
+
+    assert recommend(cold, shirt).to_json()["recommended_size"] is not None
+
+    profile = copy.deepcopy(cold)
+    for entry in profile["history"]:
+        entry["garment_ref"]["size_system"] = "US"
+    out = recommend(profile, shirt).to_json()
+
+    assert out["recommended_size"] is None
+    # The reason has to survive result_only, where explanation is withheld.
+    stripped = recommend(profile, shirt, disclosure_level="result_only").to_json()
+    assert any("size system" in c for c in stripped["caveats"])
+
+
+def test_an_undeclared_size_system_is_not_treated_as_a_conflict(cold, shirt):
+    # The field is optional inside garment_ref. Dropping entries that simply do
+    # not say would throw away usable history on no evidence.
+    import copy
+
+    expected = recommend(cold, shirt).to_json()["recommended_size"]
+    profile = copy.deepcopy(cold)
+    for entry in profile["history"]:
+        entry["garment_ref"].pop("size_system", None)
+
+    assert recommend(profile, shirt).to_json()["recommended_size"] == expected
+
+
 def test_a_reversed_ease_band_falls_back_and_says_so(mature, shirt):
     # min above max describes an interval no value can satisfy. Swapping the two
     # would be guessing at an intention; treating the band as absent is the same
