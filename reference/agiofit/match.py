@@ -126,6 +126,36 @@ def _usable_stretch(garment: dict) -> float:
     return STRETCH_CLASS_FRACTION.get(fabric.get("stretch_class", "none"), 0.0)
 
 
+RETURNED_FOR_SIZE = {
+    "returned_too_small",
+    "returned_too_large",
+    "returned_wrong_shape",
+    "exchanged_for_smaller",
+    "exchanged_for_larger",
+}
+
+
+def _sizes_already_returned(profile: dict, garment: dict) -> set[str]:
+    """Size labels this person sent back, for this exact Cut Profile.
+
+    Keyed on cut_profile_id and nothing else: a brand or style match means a
+    similar garment, which is a weaker claim and already handled by the learned
+    offset. "kept" and "returned_other" are left out because neither says the
+    size was wrong.
+    """
+    cut_id = garment.get("cut_profile_id")
+    if not cut_id:
+        return set()
+    labels = set()
+    for entry in profile.get("history", []):
+        ref = entry.get("garment_ref", {})
+        if ref.get("cut_profile_id") != cut_id:
+            continue
+        if entry.get("outcome") in RETURNED_FOR_SIZE:
+            labels.add(ref.get("size_label"))
+    return {l for l in labels if l}
+
+
 def _history_offset(profile: dict, garment: dict) -> tuple[float, int, int]:
     """Learned bias from what actually happened, in cm of ease.
 
@@ -287,6 +317,18 @@ def recommend(profile: dict, garment: dict, disclosure_level: str = "explained")
         scored.append((score, label, lines))
 
     scored.sort(key=lambda t: -t[0])
+
+    # A history entry pointing at this very document is not evidence about a
+    # similar garment: it is this garment, already worn by this person. Where the
+    # outcome says the size was wrong, recommending it again would make the
+    # correctability the specification promises purely nominal. The entry does not
+    # outweigh the calculation, it removes one option from it.
+    returned_labels = _sizes_already_returned(profile, garment)
+    rejected = [t for t in scored if t[1] in returned_labels]
+    all_returned = bool(rejected) and len(rejected) == len(scored)
+    if rejected and not all_returned:
+        scored = [t for t in scored if t[1] not in returned_labels]
+
     computed_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
     based_on = {
         "body_signals": len(body),
@@ -346,7 +388,20 @@ def recommend(profile: dict, garment: dict, disclosure_level: str = "explained")
     if confidence < 0.4:
         caveats.append("Low confidence: treat this as a starting point, not an answer.")
 
-    recommended = best_label if confidence >= 0.25 else None
+    if rejected and not all_returned:
+        caveats.append(
+            "Sizes already returned for this exact garment were removed from the "
+            "candidates: " + ", ".join(sorted(lbl for _, lbl, _ in rejected)) + "."
+        )
+    if all_returned:
+        # Every size on offer has already come back. Naming one anyway would be
+        # worse than naming none, and the person is owed the reason rather than
+        # a silent shrug.
+        caveats.append(
+            "Every size of this garment has already been returned by this person. "
+            "No size is named, deliberately."
+        )
+    recommended = None if all_returned else (best_label if confidence >= 0.25 else None)
     if recommended is None:
         caveats.append("Not enough signal to name a size. Returning alternatives only, deliberately.")
 
@@ -357,6 +412,14 @@ def recommend(profile: dict, garment: dict, disclosure_level: str = "explained")
         disclosure_level=disclosure_level,
         alternatives=[
             {"size_label": lbl, "score": round(sc, 2)} for sc, lbl, _ in scored[1:4]
+        ]
+        + [
+            {
+                "size_label": lbl,
+                "score": round(sc, 2),
+                "note": "Already returned for this garment.",
+            }
+            for sc, lbl, _ in (rejected if not all_returned else [])
         ],
         explanation=best_lines,
         based_on=based_on,

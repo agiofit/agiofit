@@ -147,6 +147,75 @@ def test_flat_laid_measurements_are_doubled(mature, shirt):
     assert chest["ease_cm"] > 5  # would be deeply negative if doubling were skipped
 
 
+def _returned(shirt, label, outcome="returned_too_small"):
+    return {
+        "occurred_at": "2026-07-01T00:00:00Z",
+        "garment_ref": {
+            "cut_profile_id": shirt["cut_profile_id"],
+            "size_label": label,
+        },
+        "outcome": outcome,
+        "source": "user",
+    }
+
+
+def test_a_size_already_returned_is_not_recommended_again(mature, shirt):
+    # An entry pointing at this very document is not evidence about a similar
+    # garment. Recommending back what the person sent back would make the
+    # correctability the spec promises purely nominal.
+    import copy
+
+    first = recommend(mature, shirt).to_json()["recommended_size"]
+
+    profile = copy.deepcopy(mature)
+    profile["history"].append(_returned(shirt, first))
+    out = recommend(profile, shirt).to_json()
+
+    assert out["recommended_size"] != first
+    # Removed, not hidden: it comes back as an alternative carrying the reason.
+    assert any(
+        alt["size_label"] == first and alt.get("note") for alt in out["alternatives"]
+    )
+    assert any(first in c for c in out["caveats"])
+
+
+def test_the_join_needs_the_cut_profile_id(mature, shirt):
+    # Same return, recorded without the identifier. A brand or style match means a
+    # similar garment, which is a weaker claim and must not trigger exclusion.
+    import copy
+
+    first = recommend(mature, shirt).to_json()["recommended_size"]
+    profile = copy.deepcopy(mature)
+    entry = _returned(shirt, first)
+    del entry["garment_ref"]["cut_profile_id"]
+    entry["garment_ref"]["brand"] = shirt.get("brand", "Sartoria Esempio")
+    profile["history"].append(entry)
+
+    assert recommend(profile, shirt).to_json()["recommended_size"] == first
+
+
+def test_keeping_a_garment_does_not_exclude_its_size(mature, shirt):
+    import copy
+
+    first = recommend(mature, shirt).to_json()["recommended_size"]
+    profile = copy.deepcopy(mature)
+    profile["history"].append(_returned(shirt, first, outcome="kept"))
+
+    assert recommend(profile, shirt).to_json()["recommended_size"] == first
+
+
+def test_no_size_is_named_when_every_size_came_back(mature, shirt):
+    import copy
+
+    profile = copy.deepcopy(mature)
+    for size in shirt["sizes"]:
+        profile["history"].append(_returned(shirt, size["size_label"]))
+    out = recommend(profile, shirt).to_json()
+
+    assert out["recommended_size"] is None
+    assert any("already been returned" in c for c in out["caveats"])
+
+
 def test_unused_measurements_are_declared(mature, shirt):
     # A measurement the implementation cannot map used to vanish without trace.
     # Naming it is what makes the answer correctable by whoever wrote the profile.
