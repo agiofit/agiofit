@@ -54,6 +54,22 @@ sharing a brand.
 for consumers that have one. The schema does not verify the check digit, so a malformed value is
 accepted.
 
+### The size system is not part of the comparison
+
+`size_system` is required, and no consumer should use it to compute anything. Sizes are compared
+through measurements, never by converting one system's labels into another's, and a consumer that
+started converting would be doing the thing this data model exists to replace.
+
+It is required for two other reasons.
+
+A size label is meaningless without it. `42` is a different garment in IT, in US and in UK, and
+the label is the one field that travels unchanged to whoever reads the recommendation.
+
+And it is a guard on identity rather than an input to arithmetic. Where a consumer lines up a
+label in this profile against a label in someone's history, two labels from different systems
+must not be treated as the same size. Declaring the system is what makes that check possible; it
+does not make the systems comparable.
+
 ### Recognising the same garment again
 
 A Cut Profile is not only compared against a body. It is also compared against what the person
