@@ -34,6 +34,16 @@ keyed by garment measurement names: the field is keyed by zone, so `chest` and n
 **What to do.** Correct the spelling, or move to the zone name. The two vocabularies are separate
 on purpose: zones are where fit is judged, measurement names are what was physically measured.
 
+### A size must carry at least one measurement
+
+**What changed.** `finished_measurements` used to accept an empty object.
+
+**What breaks.** A size listed with no measurements at all is no longer valid.
+
+**What to do.** Remove the size from the document. There is nothing in it to correct: a size with
+no measurements cannot be recommended by anyone, and listing it only asserts that the size exists,
+which the document is not for. Add it back when it has been measured.
+
 ### `measurement_method` has two values instead of four
 
 **What changed.** `iso_8559` and `brand_defined` were removed. Only `flat_laid` and
