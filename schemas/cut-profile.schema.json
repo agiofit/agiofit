@@ -31,7 +31,12 @@
   "additionalProperties": false,
   "properties": {
     "schema_version": { "const": "0.1.0" },
-    "cut_profile_id": { "type": "string" },
+    "cut_profile_id": {
+      "type": "string",
+      "description": "Identifies this document, and is the only link between a Match Report and the profile that produced it. No form is prescribed beyond being usable as an identifier: a readable key, a UUID and a URL are all fine. Uniqueness cannot be checked by a schema, which knows nothing of other documents, so this constrains the shape and not the collision.",
+      "minLength": 8,
+      "pattern": "^\\S{8,}$"
+    },
     "brand": { "type": "string" },
     "style_id": { "type": "string" },
     "style_name": { "type": "string" },
@@ -168,7 +173,11 @@
       "required": ["cut_profile_id", "relationship"],
       "additionalProperties": false,
       "properties": {
-        "cut_profile_id": { "type": "string" },
+        "cut_profile_id": {
+          "type": "string",
+          "minLength": 8,
+          "pattern": "^\\S{8,}$"
+        },
         "relationship": {
           "description": "supersedes: the earlier profile should no longer be used to recommend a size, although it remains readable and is not withdrawn. extends: both profiles remain valid and this one carries more measurements.",
           "enum": ["supersedes", "extends"]

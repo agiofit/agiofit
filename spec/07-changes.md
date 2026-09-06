@@ -34,6 +34,21 @@ keyed by garment measurement names: the field is keyed by zone, so `chest` and n
 **What to do.** Correct the spelling, or move to the zone name. The two vocabularies are separate
 on purpose: zones are where fit is judged, measurement names are what was physically measured.
 
+### `cut_profile_id` must look like an identifier
+
+**What changed.** The field used to accept any string, including an empty one. It now has to be
+at least eight characters long and carry no whitespace at all. The same applies to the
+`cut_profile_id` inside `derived_from`, which is a reference to nothing if it is empty.
+
+**What to do.** Give the document a real identifier. A readable key, a UUID and a URL are all
+fine; what is rejected is an empty string, a placeholder of one or two characters, and anything
+with a space or a line break in it, because an identifier travels through URLs, logs and command
+lines where those do not survive.
+
+Changing the identifier of a document that is already published breaks the link from any Match
+Report that cites it. If that has happened, the new document supersedes the old one, and
+`derived_from` is the field that says so.
+
 ### A size must carry at least one measurement
 
 **What changed.** `finished_measurements` used to accept an empty object.
