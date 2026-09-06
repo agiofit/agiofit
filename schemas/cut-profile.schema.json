@@ -40,7 +40,6 @@
     "brand": { "type": "string" },
     "style_id": { "type": "string" },
     "style_name": { "type": "string" },
-    "gtin": { "type": "string" },
     "category": {
       "enum": ["tops", "shirts", "knitwear", "outerwear", "tailoring", "dresses", "trousers", "jeans", "skirts", "activewear", "underwear", "swimwear", "footwear", "accessories"]
     },
@@ -64,6 +63,12 @@
         "additionalProperties": false,
         "properties": {
           "size_label": { "type": "string" },
+          "gtins": {
+            "description": "Global Trade Item Numbers for this size. A list because one cut is usually sold in several colours, and GS1 requires a distinct GTIN for every sellable combination of style, colour and size. The check digit is not verified here.",
+            "type": "array",
+            "items": { "type": "string", "pattern": "^[0-9]{8}$|^[0-9]{12,14}$" },
+            "minItems": 1
+          },
           "finished_measurements": {
             "type": "object",
             "minProperties": 1,

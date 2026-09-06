@@ -34,6 +34,21 @@ keyed by garment measurement names: the field is keyed by zone, so `chest` and n
 **What to do.** Correct the spelling, or move to the zone name. The two vocabularies are separate
 on purpose: zones are where fit is judged, measurement names are what was physically measured.
 
+### `gtin` moved into the size, and became `gtins`
+
+**What changed.** The optional `gtin` at the root is gone. Each size may instead carry `gtins`, a
+list of trade item numbers, each 8, 12, 13 or 14 digits.
+
+**What breaks.** A profile with a root-level `gtin` is no longer valid.
+
+**What to do.** Move each number to the size it belongs to. A single number at the root could not
+say which of the sizes it identified, because GS1 requires a distinct GTIN for every sellable
+combination of style, colour and size, while one Cut Profile describes several sizes at once and
+normally holds for every colour the cut is made in. That is also why the field is a list: one cut
+in three colours has three trade item numbers for the same size.
+
+The check digit is not verified. The constraint here is on length and on digits only.
+
 ### `cut_profile_id` must look like an identifier
 
 **What changed.** The field used to accept any string, including an empty one. It now has to be
