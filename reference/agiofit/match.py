@@ -352,6 +352,17 @@ def recommend(profile: dict, garment: dict, disclosure_level: str = "explained")
         # Cold start: nothing to compare numerically. Fall back on what the person actually wore.
         # This path is the whole argument for the history layer — it works with zero measurements.
         label, conf, notes = _history_only_size(profile, garment)
+        # Which side is empty decides who is being told to do something. Blaming the
+        # profile when the garment carries no measurements sends the one person who
+        # cannot fix it off to measure themselves again.
+        garment_has_measurements = any(
+            size.get("finished_measurements") for size in garment.get("sizes", [])
+        )
+        nothing_to_compare = (
+            "No zone could be compared: this garment publishes no measurements."
+            if not garment_has_measurements
+            else "No zone could be compared: the profile has no measurements this garment can be matched against."
+        )
         return MatchReport(
             cut_profile_id=garment.get("cut_profile_id", ""),
             recommended_size=label,
@@ -362,7 +373,7 @@ def recommend(profile: dict, garment: dict, disclosure_level: str = "explained")
             ],
             based_on=based_on,
             caveats=(
-                ["No zone could be compared: the profile has no measurements this garment can be matched against."]
+                [nothing_to_compare]
                 + (["Answer derived from past purchases alone."] if label else [])
                 # Explanation is withheld at result_only, so a reason that lives only
                 # there is a reason the reader never gets.

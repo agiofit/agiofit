@@ -147,6 +147,22 @@ def test_flat_laid_measurements_are_doubled(mature, shirt):
     assert chest["ease_cm"] > 5  # would be deeply negative if doubling were skipped
 
 
+def test_an_empty_garment_is_not_blamed_on_the_profile(mature, shirt):
+    # Both sides empty land in the same cold-start branch, but only one of the two
+    # readers can act. Telling someone with a full profile to go and measure
+    # themselves is advice aimed at the wrong person.
+    import copy
+
+    garment = copy.deepcopy(shirt)
+    for size in garment["sizes"]:
+        size["finished_measurements"] = {}
+
+    assert any(
+        "this garment publishes no measurements" in c
+        for c in recommend(mature, garment).to_json()["caveats"]
+    )
+
+
 def test_history_in_another_size_system_is_not_used(cold, shirt):
     # A label means nothing without its system: a 42 is a different garment in IT,
     # US and UK. The cold start path matches labels by position, so crossing
