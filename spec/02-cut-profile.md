@@ -54,6 +54,48 @@ sharing a brand.
 for consumers that have one. The schema does not verify the check digit, so a malformed value is
 accepted.
 
+### The size system is not part of the comparison
+
+`size_system` is required, and no consumer should use it to compute anything. Sizes are compared
+through measurements, never by converting one system's labels into another's, and a consumer that
+started converting would be doing the thing this data model exists to replace.
+
+It is required for two other reasons.
+
+A size label is meaningless without it. `42` is a different garment in IT, in US and in UK, and
+the label is the one field that travels unchanged to whoever reads the recommendation.
+
+And it is a guard on identity rather than an input to arithmetic. Where a consumer lines up a
+label in this profile against a label in someone's history, two labels from different systems
+must not be treated as the same size. Declaring the system is what makes that check possible; it
+does not make the systems comparable.
+
+### Recognising the same garment again
+
+A Cut Profile is not only compared against a body. It is also compared against what the person
+has already worn, which is how a consumer learns that a particular label runs small for a
+particular person. That history lives in the Fit Profile, where each entry carries a
+`garment_ref`, and the join between the two documents is what makes the learning possible.
+
+Three fields can carry that join, and they are not equivalent.
+
+`cut_profile_id` identifies one document exactly. It is the only join that cannot be got wrong,
+and `garment_ref` already provides for it. It is also the one least often available, because it
+requires that the earlier garment had a Cut Profile at all.
+
+`style_id` together with `brand` identifies a model. Two garments sharing both are the same
+design in the same cut, which is the strongest evidence short of an identifier.
+
+`brand` alone identifies a house. It is the weakest of the three and the most often the only one
+present, particularly for second-hand garments where nothing but a label survives.
+
+How two brand strings are compared is left to the consumer, because it is part of how an answer
+is computed and this specification does not standardise that. The consequence is worth stating
+plainly: whoever publishes a Cut Profile should not assume that the name they write will be read
+as the same name someone else wrote, and a consumer that has joined on the brand alone should
+say so in its answer rather than present the result as though the garments were known to be
+related.
+
 ## Measurement names
 
 The keys of `finished_measurements` are the vocabulary two documents share. A name only earns a

@@ -154,6 +154,150 @@ def test_zone_vocabulary_stays_identical_across_schemas():
     fit = json.loads((SCHEMAS / "fit-profile.schema.json").read_text(encoding="utf-8"))
     cut = json.loads((SCHEMAS / "cut-profile.schema.json").read_text(encoding="utf-8"))
     assert cut["$defs"]["zone"]["enum"] == fit["$defs"]["zone"]["enum"]
+def test_an_empty_garment_is_not_blamed_on_the_profile(mature, shirt):
+    # Both sides empty land in the same cold-start branch, but only one of the two
+    # readers can act. Telling someone with a full profile to go and measure
+    # themselves is advice aimed at the wrong person.
+    import copy
+
+    garment = copy.deepcopy(shirt)
+    for size in garment["sizes"]:
+        size["finished_measurements"] = {}
+
+    assert any(
+        "this garment publishes no measurements" in c
+        for c in recommend(mature, garment).to_json()["caveats"]
+    )
+
+
+def test_history_in_another_size_system_is_not_used(cold, shirt):
+    # A label means nothing without its system: a 42 is a different garment in IT,
+    # US and UK. The cold start path matches labels by position, so crossing
+    # systems there would silently line up sizes that have nothing in common.
+    import copy
+
+    assert recommend(cold, shirt).to_json()["recommended_size"] is not None
+
+    profile = copy.deepcopy(cold)
+    for entry in profile["history"]:
+        entry["garment_ref"]["size_system"] = "US"
+    out = recommend(profile, shirt).to_json()
+
+    assert out["recommended_size"] is None
+    # The reason has to survive result_only, where explanation is withheld.
+    stripped = recommend(profile, shirt, disclosure_level="result_only").to_json()
+    assert any("size system" in c for c in stripped["caveats"])
+
+
+def test_an_undeclared_size_system_is_not_treated_as_a_conflict(cold, shirt):
+    # The field is optional inside garment_ref. Dropping entries that simply do
+    # not say would throw away usable history on no evidence.
+    import copy
+
+    expected = recommend(cold, shirt).to_json()["recommended_size"]
+    profile = copy.deepcopy(cold)
+    for entry in profile["history"]:
+        entry["garment_ref"].pop("size_system", None)
+
+    assert recommend(profile, shirt).to_json()["recommended_size"] == expected
+
+
+def test_a_reversed_ease_band_falls_back_and_says_so(mature, shirt):
+    # min above max describes an interval no value can satisfy. Swapping the two
+    # would be guessing at an intention; treating the band as absent is the same
+    # fallback the spec already requires when the field is missing.
+    import copy
+
+    garment = copy.deepcopy(shirt)
+    garment["intended_ease"]["chest"] = {"min": 12.0, "max": 8.0, "unit": "cm"}
+    out = recommend(mature, garment).to_json()
+
+    assert any("minimum exceeds its maximum" in c for c in out["caveats"])
+    assert out["confidence"] < recommend(mature, shirt).to_json()["confidence"]
+    # The zone must not be judged against the impossible band.
+    chest = [l for l in out["explanation"] if l["zone"] == "chest"][0]
+    assert chest["assessment"] != "too_loose"
+
+
+def test_a_single_point_ease_band_is_left_alone(mature, shirt):
+    # min == max claims a precision no production line has, but it is coherent.
+    # Judging the value rather than its consistency is not this check's job.
+    import copy
+
+    garment = copy.deepcopy(shirt)
+    garment["intended_ease"]["chest"] = {"min": 10.0, "max": 10.0, "unit": "cm"}
+    out = recommend(mature, garment).to_json()
+
+    assert not any("minimum exceeds its maximum" in c for c in out["caveats"])
+
+
+def _returned(shirt, label, outcome="returned_too_small"):
+    return {
+        "occurred_at": "2026-07-01T00:00:00Z",
+        "garment_ref": {
+            "cut_profile_id": shirt["cut_profile_id"],
+            "size_label": label,
+        },
+        "outcome": outcome,
+        "source": "user",
+    }
+
+
+def test_a_size_already_returned_is_not_recommended_again(mature, shirt):
+    # An entry pointing at this very document is not evidence about a similar
+    # garment. Recommending back what the person sent back would make the
+    # correctability the spec promises purely nominal.
+    import copy
+
+    first = recommend(mature, shirt).to_json()["recommended_size"]
+
+    profile = copy.deepcopy(mature)
+    profile["history"].append(_returned(shirt, first))
+    out = recommend(profile, shirt).to_json()
+
+    assert out["recommended_size"] != first
+    # Removed, not hidden: it comes back as an alternative carrying the reason.
+    assert any(
+        alt["size_label"] == first and alt.get("note") for alt in out["alternatives"]
+    )
+    assert any(first in c for c in out["caveats"])
+
+
+def test_the_join_needs_the_cut_profile_id(mature, shirt):
+    # Same return, recorded without the identifier. A brand or style match means a
+    # similar garment, which is a weaker claim and must not trigger exclusion.
+    import copy
+
+    first = recommend(mature, shirt).to_json()["recommended_size"]
+    profile = copy.deepcopy(mature)
+    entry = _returned(shirt, first)
+    del entry["garment_ref"]["cut_profile_id"]
+    entry["garment_ref"]["brand"] = shirt.get("brand", "Sartoria Esempio")
+    profile["history"].append(entry)
+
+    assert recommend(profile, shirt).to_json()["recommended_size"] == first
+
+
+def test_keeping_a_garment_does_not_exclude_its_size(mature, shirt):
+    import copy
+
+    first = recommend(mature, shirt).to_json()["recommended_size"]
+    profile = copy.deepcopy(mature)
+    profile["history"].append(_returned(shirt, first, outcome="kept"))
+
+    assert recommend(profile, shirt).to_json()["recommended_size"] == first
+
+
+def test_no_size_is_named_when_every_size_came_back(mature, shirt):
+    import copy
+
+    profile = copy.deepcopy(mature)
+    for size in shirt["sizes"]:
+        profile["history"].append(_returned(shirt, size["size_label"]))
+    out = recommend(profile, shirt).to_json()
+
+    assert out["recommended_size"] is None
+    assert any("already been returned" in c for c in out["caveats"])
 
 
 def test_unused_measurements_are_declared(mature, shirt):

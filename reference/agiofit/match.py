@@ -126,6 +126,36 @@ def _usable_stretch(garment: dict) -> float:
     return STRETCH_CLASS_FRACTION.get(fabric.get("stretch_class", "none"), 0.0)
 
 
+RETURNED_FOR_SIZE = {
+    "returned_too_small",
+    "returned_too_large",
+    "returned_wrong_shape",
+    "exchanged_for_smaller",
+    "exchanged_for_larger",
+}
+
+
+def _sizes_already_returned(profile: dict, garment: dict) -> set[str]:
+    """Size labels this person sent back, for this exact Cut Profile.
+
+    Keyed on cut_profile_id and nothing else: a brand or style match means a
+    similar garment, which is a weaker claim and already handled by the learned
+    offset. "kept" and "returned_other" are left out because neither says the
+    size was wrong.
+    """
+    cut_id = garment.get("cut_profile_id")
+    if not cut_id:
+        return set()
+    labels = set()
+    for entry in profile.get("history", []):
+        ref = entry.get("garment_ref", {})
+        if ref.get("cut_profile_id") != cut_id:
+            continue
+        if entry.get("outcome") in RETURNED_FOR_SIZE:
+            labels.add(ref.get("size_label"))
+    return {l for l in labels if l}
+
+
 def _history_offset(profile: dict, garment: dict) -> tuple[float, int, int]:
     """Learned bias from what actually happened, in cm of ease.
 
@@ -191,6 +221,7 @@ def recommend(profile: dict, garment: dict, disclosure_level: str = "explained")
     caveats: list[str] = []
     improve_by: list[str] = []
     fallback_zones = 0
+    reversed_ease_zones: set[str] = set()
 
     # A measurement this implementation has no mapping for is silently dropped
     # otherwise. Saying so is the difference between an answer that can be
@@ -238,8 +269,17 @@ def recommend(profile: dict, garment: dict, disclosure_level: str = "explained")
             b_cm = _cm(bm["value"], bm["unit"])
             ease = g_cm - b_cm
 
-            if mapping.zone in declared_ease:
-                band = declared_ease[mapping.zone]
+            band = declared_ease.get(mapping.zone)
+            if band is not None and _cm(band["min"], band["unit"]) > _cm(
+                band["max"], band["unit"]
+            ):
+                # An empty interval is not a typo whose intention is known: it is a
+                # document asserting something impossible. Swapping the two numbers
+                # would be guessing, so the declared ease is treated as absent and
+                # the fallback is paid for like any other.
+                reversed_ease_zones.add(mapping.zone)
+                band = None
+            if band is not None:
                 lo = _cm(band["min"], band["unit"])
                 hi = _cm(band["max"], band["unit"])
             else:
@@ -287,6 +327,18 @@ def recommend(profile: dict, garment: dict, disclosure_level: str = "explained")
         scored.append((score, label, lines))
 
     scored.sort(key=lambda t: -t[0])
+
+    # A history entry pointing at this very document is not evidence about a
+    # similar garment: it is this garment, already worn by this person. Where the
+    # outcome says the size was wrong, recommending it again would make the
+    # correctability the specification promises purely nominal. The entry does not
+    # outweigh the calculation, it removes one option from it.
+    returned_labels = _sizes_already_returned(profile, garment)
+    rejected = [t for t in scored if t[1] in returned_labels]
+    all_returned = bool(rejected) and len(rejected) == len(scored)
+    if rejected and not all_returned:
+        scored = [t for t in scored if t[1] not in returned_labels]
+
     computed_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
     based_on = {
         "body_signals": len(body),
@@ -300,6 +352,17 @@ def recommend(profile: dict, garment: dict, disclosure_level: str = "explained")
         # Cold start: nothing to compare numerically. Fall back on what the person actually wore.
         # This path is the whole argument for the history layer — it works with zero measurements.
         label, conf, notes = _history_only_size(profile, garment)
+        # Which side is empty decides who is being told to do something. Blaming the
+        # profile when the garment carries no measurements sends the one person who
+        # cannot fix it off to measure themselves again.
+        garment_has_measurements = any(
+            size.get("finished_measurements") for size in garment.get("sizes", [])
+        )
+        nothing_to_compare = (
+            "No zone could be compared: this garment publishes no measurements."
+            if not garment_has_measurements
+            else "No zone could be compared: the profile has no measurements this garment can be matched against."
+        )
         return MatchReport(
             cut_profile_id=garment.get("cut_profile_id", ""),
             recommended_size=label,
@@ -310,8 +373,11 @@ def recommend(profile: dict, garment: dict, disclosure_level: str = "explained")
             ],
             based_on=based_on,
             caveats=(
-                ["No zone could be compared: the profile has no measurements this garment can be matched against."]
+                [nothing_to_compare]
                 + (["Answer derived from past purchases alone."] if label else [])
+                # Explanation is withheld at result_only, so a reason that lives only
+                # there is a reason the reader never gets.
+                + [n for n in notes if "size system" in n]
             ),
             improve_by=_improvements(body, profile, garment),
             computed_at=computed_at,
@@ -335,6 +401,13 @@ def recommend(profile: dict, garment: dict, disclosure_level: str = "explained")
         caveats.append(
             "The garment does not publish an intended ease for every zone; category defaults were used."
         )
+    if reversed_ease_zones:
+        caveats.append(
+            "The garment declares an intended ease whose minimum exceeds its maximum, "
+            "so no value could satisfy it. Category defaults were used instead for: "
+            + ", ".join(sorted(reversed_ease_zones))
+            + "."
+        )
     if unused_keys:
         caveats.append(
             "The garment publishes measurements this implementation does not use: "
@@ -346,7 +419,20 @@ def recommend(profile: dict, garment: dict, disclosure_level: str = "explained")
     if confidence < 0.4:
         caveats.append("Low confidence: treat this as a starting point, not an answer.")
 
-    recommended = best_label if confidence >= 0.25 else None
+    if rejected and not all_returned:
+        caveats.append(
+            "Sizes already returned for this exact garment were removed from the "
+            "candidates: " + ", ".join(sorted(lbl for _, lbl, _ in rejected)) + "."
+        )
+    if all_returned:
+        # Every size on offer has already come back. Naming one anyway would be
+        # worse than naming none, and the person is owed the reason rather than
+        # a silent shrug.
+        caveats.append(
+            "Every size of this garment has already been returned by this person. "
+            "No size is named, deliberately."
+        )
+    recommended = None if all_returned else (best_label if confidence >= 0.25 else None)
     if recommended is None:
         caveats.append("Not enough signal to name a size. Returning alternatives only, deliberately.")
 
@@ -357,6 +443,14 @@ def recommend(profile: dict, garment: dict, disclosure_level: str = "explained")
         disclosure_level=disclosure_level,
         alternatives=[
             {"size_label": lbl, "score": round(sc, 2)} for sc, lbl, _ in scored[1:4]
+        ]
+        + [
+            {
+                "size_label": lbl,
+                "score": round(sc, 2),
+                "note": "Already returned for this garment.",
+            }
+            for sc, lbl, _ in (rejected if not all_returned else [])
         ],
         explanation=best_lines,
         based_on=based_on,
@@ -425,6 +519,18 @@ def _improvements(body: dict, profile: dict, garment: dict) -> list[str]:
     return out
 
 
+def _same_size_system(ref: dict, garment: dict) -> bool:
+    """False only when both sides name a system and the two disagree.
+
+    A label means nothing without its system: a 42 is a different garment in IT, US
+    and UK. The field is optional inside garment_ref, so absence is not treated as
+    conflict; dropping entries that simply do not say would throw away usable
+    history on no evidence.
+    """
+    a, b = ref.get("size_system"), garment.get("size_system")
+    return not (a and b and a != b)
+
+
 def _history_only_size(profile: dict, garment: dict) -> tuple[str | None, float, list[str]]:
     """Guess a size from past outcomes alone, with no body measurements at all.
 
@@ -442,10 +548,14 @@ def _history_only_size(profile: dict, garment: dict) -> tuple[str | None, float,
         "exchanged_for_smaller": -1,
     }
 
+    crossed_systems = False
     candidates: list[tuple[str, str, float]] = []  # (occurred_at, label, weight)
     for item in profile.get("history", []):
         ref = item.get("garment_ref", {})
         if ref.get("brand") != brand or ref.get("category") != category:
+            continue
+        if not _same_size_system(ref, garment):
+            crossed_systems = True
             continue
         if ref.get("size_label") not in labels:
             continue
@@ -459,7 +569,13 @@ def _history_only_size(profile: dict, garment: dict) -> tuple[str | None, float,
         candidates.append((item.get("occurred_at", ""), labels[idx], 1.5 if same_style else 1.0))
 
     if not candidates:
-        return None, 0.0, ["No usable purchase history for this brand and category."]
+        notes = ["No usable purchase history for this brand and category."]
+        if crossed_systems:
+            notes.append(
+                "History for this brand exists but is labelled in a different size "
+                "system, so it was not used."
+            )
+        return None, 0.0, notes
 
     candidates.sort(reverse=True)  # most recent first
     scores: dict[str, float] = {}
