@@ -208,6 +208,25 @@ share a vocabulary. A brand wanting to say its garment is boxy should say it the
 What neither field expresses is where a seam sits. A dropped shoulder, a raised waist or the
 shape of a sleeve head are positions, not amounts, and this version does not carry them.
 
+### When one cut needs more than one profile
+
+Colour is not in this document, and does not need to be. A pattern cut in white and in blue is
+the same pattern, and the measurements do not change.
+
+What can change with the colour is the cloth. In the trade a colourway is often the name of a
+variant that also carries a different fabric, and fabric is in the document because it is in the
+calculation: a shirt with four per cent elastane fits differently from a rigid one at identical
+measurements.
+
+So the rule is not about colour at all. Publish one profile per cut, and split it only when
+something that enters the calculation differs: the finished measurements, or the fabric. Two
+colourways in the same cloth are one profile. The same cut in a stretch and a rigid version are
+two, each with its own `fabric` and its own `cut_profile_id`.
+
+Dye can also move a measurement by a millimetre or two, and a large print can stiffen an area of
+jersey. Both sit inside production tolerance, which is the field that already accounts for units
+of the same size not being identical.
+
 ## Provenance
 
 `published_by` is required. It names who is making the claim, and nothing else. It is not a
