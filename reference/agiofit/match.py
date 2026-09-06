@@ -401,6 +401,22 @@ def recommend(profile: dict, garment: dict, disclosure_level: str = "explained")
         caveats.append(
             "The garment does not publish an intended ease for every zone; category defaults were used."
         )
+    duplicate_labels = sorted(
+        {
+            size["size_label"]
+            for size in garment.get("sizes", [])
+            if [s["size_label"] for s in garment["sizes"]].count(size["size_label"]) > 1
+        }
+    )
+    if duplicate_labels:
+        # The answer names a label, so a label standing for two different garments
+        # makes the answer unusable however good the arithmetic behind it was.
+        caveats.append(
+            "The garment lists more than one size under the same label, so the "
+            "recommendation does not identify a single size: "
+            + ", ".join(duplicate_labels)
+            + "."
+        )
     if reversed_ease_zones:
         caveats.append(
             "The garment declares an intended ease whose minimum exceeds its maximum, "
@@ -531,13 +547,47 @@ def _same_size_system(ref: dict, garment: dict) -> bool:
     return not (a and b and a != b)
 
 
+def _labels_by_size(garment: dict) -> list[str]:
+    """Size labels ordered from smallest to largest, by measurement.
+
+    Stepping one size up or down only means something on an ordered list, and
+    nothing requires a document to list its sizes in order. An order taken from the
+    labels would need to know that 40 precedes 41, that M precedes L, and that
+    28/32 is not orderable at all, which is the size-chart knowledge this model
+    exists to avoid. The measurements are already there and say it plainly: a
+    larger size is a larger number.
+
+    Sizes that share no measurement with the others cannot be placed, and are
+    dropped rather than guessed at.
+    """
+    sizes = garment.get("sizes", [])
+    counts: dict[str, int] = {}
+    for size in sizes:
+        for key in size.get("finished_measurements") or {}:
+            counts[key] = counts.get(key, 0) + 1
+    if not counts:
+        return [s["size_label"] for s in sizes]
+    # The measurement most sizes agree on, ties broken by name so the choice is
+    # not left to dictionary order.
+    key = sorted(counts, key=lambda k: (-counts[k], k))[0]
+
+    placed = []
+    for size in sizes:
+        m = (size.get("finished_measurements") or {}).get(key)
+        if m is None:
+            continue
+        placed.append((_cm(m["value"], m["unit"]), size["size_label"]))
+    placed.sort()
+    return [label for _, label in placed]
+
+
 def _history_only_size(profile: dict, garment: dict) -> tuple[str | None, float, list[str]]:
     """Guess a size from past outcomes alone, with no body measurements at all.
 
     Only same-brand history is trusted here: a size label from one brand says almost nothing about
     another brand's label, and pretending otherwise is how size charts got their reputation.
     """
-    labels = [s["size_label"] for s in garment.get("sizes", [])]
+    labels = _labels_by_size(garment)
     brand = garment.get("brand")
     category = garment.get("category")
     step = {

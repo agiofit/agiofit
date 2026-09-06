@@ -147,6 +147,34 @@ def test_flat_laid_measurements_are_doubled(mature, shirt):
     assert chest["ease_cm"] > 5  # would be deeply negative if doubling were skipped
 
 
+def test_size_order_comes_from_measurements_not_from_the_file(cold, shirt):
+    # Stepping one size up only means something on an ordered list, and nothing
+    # requires a document to list its sizes in order. Taking the order from the
+    # measurements makes the answer independent of how the file was written.
+    import copy
+
+    expected = recommend(cold, shirt).to_json()["recommended_size"]
+
+    shuffled = copy.deepcopy(shirt)
+    shuffled["sizes"] = list(reversed(shuffled["sizes"]))
+
+    assert recommend(cold, shuffled).to_json()["recommended_size"] == expected
+
+
+def test_a_repeated_size_label_is_declared(mature, shirt):
+    # The answer names a label. A label standing for two different garments makes
+    # it unusable however good the arithmetic behind it was.
+    import copy
+
+    garment = copy.deepcopy(shirt)
+    twin = copy.deepcopy(garment["sizes"][2])
+    twin["finished_measurements"]["chest_width"]["value"] += 6.0
+    garment["sizes"].append(twin)
+
+    caveats = recommend(mature, garment).to_json()["caveats"]
+    assert any("same label" in c and twin["size_label"] in c for c in caveats)
+
+
 def test_an_empty_garment_is_not_blamed_on_the_profile(mature, shirt):
     # Both sides empty land in the same cold-start branch, but only one of the two
     # readers can act. Telling someone with a full profile to go and measure
