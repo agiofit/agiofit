@@ -50,9 +50,13 @@ sharing a brand.
 
 **`style_name`.** Human-readable. For people, not for matching.
 
-**`gtin`.** The commercial barcode. Not used for matching; present as the link to retail systems
-for consumers that have one. The schema does not verify the check digit, so a malformed value is
-accepted.
+**`gtins`.** Commercial barcodes, on the size rather than on the document. GS1 requires a
+distinct number for every sellable combination of style, colour and size, while one profile
+covers several sizes and normally every colour the cut is made in, so a single number at the root
+could never say which garment it identified. It is a list for the same reason: one cut in three
+colours has three numbers for the same size. Not used for matching; present as the link to retail
+systems for consumers that have one. Only the length is checked, not the check digit, so a
+malformed value can still get through.
 
 ### The size system is not part of the comparison
 
