@@ -24,6 +24,50 @@ SCHEMA_VERSION = "0.1.0"
 IN_TO_CM = 2.54
 
 
+class UnsupportedSchemaVersion(ValueError):
+    """Raised when a document is written to a major version this code cannot read."""
+
+
+def _version_notes(profile: dict, garment: dict) -> list[str]:
+    """Refuse a different major version, note a newer minor one.
+
+    A major difference means fields have moved or gone, so reading the document
+    anyway would mean looking for values where they no longer are and answering
+    from what happened to be found. A newer minor version only adds, so the parts
+    this code knows are still where it expects them; ignoring the rest is safe, but
+    the reader deserves to be told the answer was computed from a subset.
+    """
+    def compat(parts: list[int]) -> tuple[int, ...]:
+        # Under a zero major, semantic versioning treats every minor bump as free
+        # to break, and this project is using it that way: 0.2 moves fields that
+        # 0.1 had elsewhere. So while the major is zero the minor is the line that
+        # cannot be crossed; from 1.0 on, the major alone is.
+        return (parts[0],) if parts[0] > 0 else tuple(parts[:2])
+
+    notes = []
+    mine_parts = [int(p) for p in SCHEMA_VERSION.split(".")]
+    mine = compat(mine_parts)
+    for kind, doc in (("fit profile", profile), ("cut profile", garment)):
+        declared = str(doc.get("schema_version", ""))
+        parts = declared.split(".")
+        if not declared or not parts[0].isdigit():
+            raise UnsupportedSchemaVersion(
+                f"The {kind} declares no readable schema_version."
+            )
+        nums = [int(p) for p in parts if p.isdigit()]
+        if len(nums) < 2 or compat(nums) != mine:
+            raise UnsupportedSchemaVersion(
+                f"The {kind} is version {declared}; this implementation reads "
+                f"{SCHEMA_VERSION} and cannot read across that difference."
+            )
+        if len(nums) > 2 and nums[2] > mine_parts[2]:
+            notes.append(
+                f"The {kind} is version {declared}, newer than the {SCHEMA_VERSION} "
+                "this implementation knows. Anything added since was ignored."
+            )
+    return notes
+
+
 # --------------------------------------------------------------------------- loading
 
 
@@ -213,12 +257,13 @@ def recommend(profile: dict, garment: dict, disclosure_level: str = "explained")
     stretch = _usable_stretch(garment)
     prod_tol = garment.get("production_tolerance") or {"value": 1.0, "unit": "cm"}
     prod_tol_cm = _cm(prod_tol["value"], prod_tol["unit"])
+    version_notes = _version_notes(profile, garment)
     declared_ease = garment.get("intended_ease") or {}
 
     body = ((profile.get("body") or {}).get("measurements")) or {}
     history_offset, history_n, brand_history_n = _history_offset(profile, garment)
 
-    caveats: list[str] = []
+    caveats: list[str] = list(version_notes)
     improve_by: list[str] = []
     fallback_zones = 0
     reversed_ease_zones: set[str] = set()
@@ -378,6 +423,7 @@ def recommend(profile: dict, garment: dict, disclosure_level: str = "explained")
                 # Explanation is withheld at result_only, so a reason that lives only
                 # there is a reason the reader never gets.
                 + [n for n in notes if "size system" in n]
+                + version_notes
             ),
             improve_by=_improvements(body, profile, garment),
             computed_at=computed_at,

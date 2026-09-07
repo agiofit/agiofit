@@ -3,7 +3,12 @@ from pathlib import Path
 
 import pytest
 
-from agiofit import load_fit_profile, load_cut_profile, recommend
+from agiofit import (
+    load_fit_profile,
+    load_cut_profile,
+    recommend,
+    UnsupportedSchemaVersion,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 EXAMPLES = ROOT / "examples"
@@ -145,6 +150,32 @@ def test_flat_laid_measurements_are_doubled(mature, shirt):
     report = recommend(mature, shirt, disclosure_level="scoped").to_json()
     chest = next(l for l in report["explanation"] if l["zone"] == "chest")
     assert chest["ease_cm"] > 5  # would be deeply negative if doubling were skipped
+
+
+def test_a_document_from_another_version_is_refused(mature, shirt):
+    # Under a zero major, a minor bump is free to break: 0.2 moves fields 0.1 had
+    # elsewhere. Reading it anyway would mean looking for values where they no
+    # longer are and answering from whatever happened to be found.
+    import copy
+
+    for version in ("0.2.0", "1.0.0", "", "abc"):
+        garment = copy.deepcopy(shirt)
+        garment["schema_version"] = version
+        with pytest.raises(UnsupportedSchemaVersion):
+            recommend(mature, garment)
+
+
+def test_a_newer_patch_is_read_and_declared(mature, shirt):
+    # A patch only fixes; what this code knows is still where it expects it. Going
+    # ahead is safe, but the reader is owed the fact that part was ignored.
+    import copy
+
+    garment = copy.deepcopy(shirt)
+    garment["schema_version"] = "0.1.4"
+    out = recommend(mature, garment).to_json()
+
+    assert out["recommended_size"] is not None
+    assert any("newer than" in c for c in out["caveats"])
 
 
 def test_size_order_comes_from_measurements_not_from_the_file(cold, shirt):
