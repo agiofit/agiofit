@@ -198,8 +198,10 @@
           "enum": ["brand", "manufacturer", "retailer", "marketplace_seller", "community", "measured_by_owner"],
           "description": "A community-measured second-hand jacket and a brand-published spec are both useful and are not the same thing. Consumers are expected to weight them differently."
         },
-        "verified": { "type": "boolean" },
-        "verification_method": { "type": "string" },
+        "verification_method": {
+          "description": "What was actually done to check these numbers, in plain words, when something was. A remeasure by a second person, a sample of units per size checked against the production tolerance, and a claim that the file comes from the brand are three different things that no single flag could tell apart, which is why there is no boolean here. Nothing in this version can confirm any of it, so a reader should treat this as a statement by the publisher rather than as evidence.",
+          "type": "string"
+        },
         "source_url": { "type": "string", "format": "uri" },
         "dpp_id": {
           "type": "string",

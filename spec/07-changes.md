@@ -34,6 +34,19 @@ keyed by garment measurement names: the field is keyed by zone, so `chest` and n
 **What to do.** Correct the spelling, or move to the zone name. The two vocabularies are separate
 on purpose: zones are where fit is judged, measurement names are what was physically measured.
 
+### `provenance.verified` is gone
+
+**What changed.** The boolean is removed. `verification_method` stays, and now carries the whole
+of what is being claimed.
+
+**What breaks.** A profile with `verified` in its provenance is no longer valid.
+
+**What to do.** Delete the flag and say in `verification_method` what was actually done, if
+anything was. A remeasure by a second person, a sample of units checked against the production
+tolerance, and a claim that the file really comes from the brand are three different things, and
+one true or false could not tell them apart. Nothing in this version can confirm any of them
+either, so a sentence a reader can judge is worth more than a flag a reader has to trust.
+
 ### `gtin` moved into the size, and became `gtins`
 
 **What changed.** The optional `gtin` at the root is gone. Each size may instead carry `gtins`, a
