@@ -17,6 +17,14 @@ normative is the *shape of the answer*.
 5. `improve_by` SHOULD be populated whenever confidence is below the implementation's own
    threshold. A person who is told what is missing can fix it; a person given a bare low number
    cannot.
+6. A consumer MUST NOT produce a match report from a document written to a schema version it
+   cannot read. Refusing is the only honest response: across such a version fields move and
+   disappear, so reading the document anyway means looking for values where they no longer are and
+   answering from whatever happens to be found, which produces a confident answer built on the
+   wrong numbers. Which versions can be read across is decided by the version itself: while the
+   major version is `0`, a change of minor version is free to break and MUST be treated as
+   unreadable; from `1.0` onwards the major version is the line. A newer patch MAY be read, and
+   the consumer SHOULD say in `caveats` that part of the document was ignored.
 
 ## The reference approach, in outline
 
