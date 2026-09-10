@@ -14,6 +14,7 @@ from pathlib import Path
 
 from .mapping import (
     ZONE_MAPPINGS,
+    MAPPED_ZONES,
     PREFERENCE_SHIFT,
     STRETCH_CLASS_FRACTION,
     critical_zones,
@@ -281,6 +282,12 @@ def recommend(profile: dict, garment: dict, disclosure_level: str = "explained")
         - known_keys
     )
 
+    # The same silence, one vocabulary over. A zone with no mapping is dropped whether the garment
+    # named it or our own category default did, and the answer comes out looking as complete as one
+    # where every zone was weighed.
+    unreachable_critical = sorted(crit - MAPPED_ZONES)
+    unused_ease_zones = sorted(set(declared_ease) - MAPPED_ZONES)
+
     scored: list[tuple[float, str, list[ExplanationLine]]] = []
 
     for size in garment.get("sizes", []):
@@ -474,6 +481,17 @@ def recommend(profile: dict, garment: dict, disclosure_level: str = "explained")
         caveats.append(
             "The garment publishes measurements this implementation does not use: "
             + ", ".join(unused_keys)
+            + "."
+        )
+    if unreachable_critical:
+        caveats.append(
+            "These zones count as critical here, but this implementation has no mapping for "
+            "them and did not evaluate them: " + ", ".join(unreachable_critical) + "."
+        )
+    if unused_ease_zones:
+        caveats.append(
+            "The garment declares an intended ease for zones this implementation does not use: "
+            + ", ".join(unused_ease_zones)
             + "."
         )
     if any(line.assessment == "unknown" for line in best_lines):

@@ -396,3 +396,29 @@ def test_every_zone_is_either_mapped_or_knowingly_unmapped():
         "foot_length",   # footwear is out of the measurement vocabulary, by decision
         "foot_width",
     }
+
+
+def test_zones_that_cannot_be_evaluated_are_declared(mature, shirt):
+    """Eight of the sixteen zones have no mapping. Dropping one in silence made the answer look
+    as complete as one where every zone was weighed, whether the garment named the zone or the
+    category default did."""
+    import copy
+
+    assert not any("no mapping" in c for c in recommend(mature, shirt).to_json()["caveats"])
+
+    declared = copy.deepcopy(shirt)
+    declared["critical_zones"] = ["shoulders", "bust"]
+    caveats = recommend(mature, declared).to_json()["caveats"]
+    assert any("bust" in c and "no mapping" in c for c in caveats)
+
+    defaulted = copy.deepcopy(shirt)
+    defaulted["category"] = "dresses"
+    del defaulted["critical_zones"]
+    caveats = recommend(mature, defaulted).to_json()["caveats"]
+    assert any("bust" in c and "no mapping" in c for c in caveats), \
+        "a category default is as silent as a declaration"
+
+    ease = copy.deepcopy(shirt)
+    ease["intended_ease"]["calf"] = {"min": 2.0, "max": 6.0, "unit": "cm"}
+    caveats = recommend(mature, ease).to_json()["caveats"]
+    assert any("calf" in c and "does not use" in c for c in caveats)
