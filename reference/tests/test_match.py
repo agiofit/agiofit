@@ -373,3 +373,26 @@ def test_missing_garment_data_lowers_confidence(mature, shirt):
     for size in stripped["sizes"]:
         size["finished_measurements"] = {"chest_width": size["finished_measurements"]["chest_width"]}
     assert recommend(mature, stripped).confidence < recommend(mature, shirt).confidence
+
+
+def test_every_zone_is_either_mapped_or_knowingly_unmapped():
+    """Eight of the sixteen zones have no mapping. That is allowed. Forgetting which is not.
+
+    This test fails the day someone adds a zone to the schema, or mistypes one in ZONE_MAPPINGS.
+    Updating the set below is the moment to decide what the implementation should say about it.
+    """
+    from agiofit.mapping import MAPPED_ZONES
+
+    zones = set(json.loads((SCHEMAS / "fit-profile.schema.json").read_text())["$defs"]["zone"]["enum"])
+
+    assert MAPPED_ZONES <= zones, "a mapping points at a zone the schema does not define"
+    assert zones - MAPPED_ZONES == {
+        "overall",       # the scope of a preference, not a measurement
+        "bust",          # no body measurement name is defined for it yet
+        "arm_width",     # sleeve_width exists on the garment side, nothing on the body side
+        "calf",          # calf_width exists on the garment side, nothing on the body side
+        "rise",          # the garment side is split into front_rise and back_rise
+        "total_length",  # rejected as a measurement name: two people measure it from two places
+        "foot_length",   # footwear is out of the measurement vocabulary, by decision
+        "foot_width",
+    }

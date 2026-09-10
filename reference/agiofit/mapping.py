@@ -32,6 +32,13 @@ ZONE_MAPPINGS: tuple[ZoneMapping, ...] = (
     ZoneMapping("inseam", "inseam", "inseam", False, True, 0.25),
 )
 
+# The zones this implementation can actually evaluate. Derived, never written by hand: a zone is
+# usable exactly when a row above reaches it, so the two can never drift apart. Half the zone
+# vocabulary is missing from here, and that is not a defect in itself - the vocabulary belongs to
+# the specification, the ability to use it belongs to the implementation. Saying nothing about the
+# difference is the defect.
+MAPPED_ZONES: frozenset[str] = frozenset(m.zone for m in ZONE_MAPPINGS)
+
 # Zones that cannot be altered or tolerated when wrong, per category.
 CRITICAL_ZONES: dict[str, tuple[str, ...]] = {
     "shirts": ("shoulders", "neck"),
