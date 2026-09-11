@@ -422,3 +422,21 @@ def test_zones_that_cannot_be_evaluated_are_declared(mature, shirt):
     ease["intended_ease"]["calf"] = {"min": 2.0, "max": 6.0, "unit": "cm"}
     caveats = recommend(mature, ease).to_json()["caveats"]
     assert any("calf" in c and "does not use" in c for c in caveats)
+
+
+def test_a_critical_zone_that_cannot_be_evaluated_lowers_confidence(mature, shirt):
+    """It used to raise it. A zone with no mapping produced no explanation line, so it fell out
+    of the denominator of critical_coverage and the answer scored as if the zone had been
+    measured and found to fit. No absolute number is asserted here: the arithmetic is not
+    normative, the direction is."""
+    import copy
+
+    base = recommend(mature, shirt).confidence
+
+    partly = copy.deepcopy(shirt)
+    partly["critical_zones"] = ["shoulders", "neck", "bust"]
+    assert recommend(mature, partly).confidence < base
+
+    none_reachable = copy.deepcopy(shirt)
+    none_reachable["critical_zones"] = ["bust"]
+    assert recommend(mature, none_reachable).confidence < base

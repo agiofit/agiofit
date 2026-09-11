@@ -448,6 +448,7 @@ def recommend(profile: dict, garment: dict, disclosure_level: str = "explained")
         brand_history_n=brand_history_n,
         fallback_zones=fallback_zones,
         n_sizes=len(scored),
+        unreachable_critical_n=len(unreachable_critical),
     )
 
     if fallback_zones:
@@ -541,17 +542,19 @@ def recommend(profile: dict, garment: dict, disclosure_level: str = "explained")
 
 
 def _confidence(
-    *, body, lines, best, runner_up, history_n, brand_history_n, fallback_zones, n_sizes
+    *, body, lines, best, runner_up, history_n, brand_history_n, fallback_zones, n_sizes,
+    unreachable_critical_n
 ) -> float:
     known = [l for l in lines if l.assessment != "unknown"]
     if not known:
         return 0.05
     coverage = len(known) / max(1, len(lines))
+    # A critical zone this implementation cannot reach counts against the score, not out of it.
+    # Leaving it out of the denominator made an answer that never looked at the bust of a dress
+    # score exactly like one where the bust had been measured and fitted.
     critical_known = [l for l in known if l.critical]
-    critical_total = [l for l in lines if l.critical]
-    critical_coverage = (
-        len(critical_known) / len(critical_total) if critical_total else 1.0
-    )
+    critical_total = len([l for l in lines if l.critical]) + unreachable_critical_n
+    critical_coverage = len(critical_known) / critical_total if critical_total else 1.0
 
     source_quality = 0.0
     if body:
