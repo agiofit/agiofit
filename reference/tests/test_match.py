@@ -463,3 +463,40 @@ def test_a_critical_measurement_the_garment_omits_lowers_confidence(mature, shir
     # down for a measurement its category does not have.
     zones = {l["zone"] for l in recommend(mature, shirt).to_json()["explanation"]}
     assert "thigh" not in zones and "inseam" not in zones
+
+
+def test_a_category_with_no_critical_zones_does_not_collect_the_credit(mature, shirt):
+    """An empty critical set used to score as full coverage, so a category nobody had thought
+    about was paid a fifth of the confidence for weighting nothing."""
+    import copy
+
+    unweighted = copy.deepcopy(shirt)
+    unweighted["category"] = "swimwear"
+    del unweighted["critical_zones"]
+
+    report = recommend(mature, unweighted)
+    assert any("no critical zones for this category" in c for c in report.to_json()["caveats"])
+
+    # The same document naming one critical zone, which its measurements satisfy. That answer
+    # knows strictly more, so it must score higher. While an empty set counted as full coverage
+    # the two came out level, and naming a zone could only lose points.
+    named = copy.deepcopy(unweighted)
+    named["critical_zones"] = ["chest"]
+    named_report = recommend(mature, named)
+    assert named_report.confidence > report.confidence
+    assert not any(
+        "no critical zones for this category" in c for c in named_report.to_json()["caveats"]
+    )
+
+
+def test_every_category_either_has_critical_zones_or_declares_it_has_none():
+    """The companion of the zone test above, on the other table. A category that falls through
+    both is a silent hole: nothing is weighted, and nothing says so."""
+    from agiofit.mapping import CRITICAL_ZONES, CATEGORIES_WITHOUT_CRITICAL_DEFAULTS
+
+    categories = set(
+        json.loads((SCHEMAS / "cut-profile.schema.json").read_text())["properties"]["category"]["enum"]
+    )
+
+    assert not (set(CRITICAL_ZONES) & CATEGORIES_WITHOUT_CRITICAL_DEFAULTS)
+    assert set(CRITICAL_ZONES) | CATEGORIES_WITHOUT_CRITICAL_DEFAULTS == categories

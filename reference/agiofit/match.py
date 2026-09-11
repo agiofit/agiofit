@@ -497,6 +497,11 @@ def recommend(profile: dict, garment: dict, disclosure_level: str = "explained")
             + ", ".join(unused_keys)
             + "."
         )
+    if not crit:
+        caveats.append(
+            "This implementation has no critical zones for this category, so nothing in the "
+            "answer was weighted as harder to alter than the rest."
+        )
     if unreachable_critical:
         caveats.append(
             "These zones count as critical here, but this implementation has no mapping for "
@@ -567,7 +572,11 @@ def _confidence(
     # score exactly like one where the bust had been measured and fitted.
     critical_known = [l for l in known if l.critical]
     critical_total = len([l for l in lines if l.critical]) + unreachable_critical_n
-    critical_coverage = len(critical_known) / critical_total if critical_total else 1.0
+    # An empty critical set is not full coverage of nothing. It means this implementation has no
+    # critical zones for the category and nothing was weighted as harder to alter than the rest,
+    # which is a gap in the answer and has to cost like one. DEFAULT_EASE already works this way:
+    # a missing ease band falls back and pays a penalty instead of passing unnoticed.
+    critical_coverage = len(critical_known) / critical_total if critical_total else 0.0
 
     source_quality = 0.0
     if body:

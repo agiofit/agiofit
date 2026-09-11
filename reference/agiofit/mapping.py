@@ -92,6 +92,16 @@ STRETCH_CLASS_FRACTION: dict[str, float] = {
 }
 
 
+# Categories for which this implementation has no critical zones to offer. Not the same as a
+# category that has none: `underwear` covers briefs, where the waist and the hip decide the fit,
+# and bras, where the bust does and `underbust` is not even in the zone vocabulary. One default
+# would be wrong for half of each of these, so there is no default. A garment may still name its
+# own, and then the document decides instead of this table.
+CATEGORIES_WITHOUT_CRITICAL_DEFAULTS: frozenset[str] = frozenset(
+    {"activewear", "underwear", "swimwear", "accessories"}
+)
+
+
 def critical_zones(category: str, garment: dict) -> set[str]:
     declared = garment.get("critical_zones")
     if declared:
