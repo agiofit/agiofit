@@ -440,3 +440,26 @@ def test_a_critical_zone_that_cannot_be_evaluated_lowers_confidence(mature, shir
     none_reachable = copy.deepcopy(shirt)
     none_reachable["critical_zones"] = ["bust"]
     assert recommend(mature, none_reachable).confidence < base
+
+
+def test_a_critical_measurement_the_garment_omits_lowers_confidence(mature, shirt):
+    """It used to raise it. An absent garment key produced no explanation line at all, so the zone
+    left the denominator of critical_coverage together with the numerator, and a Cut Profile that
+    never measured the shoulders of a shirt scored like one that did. The profile side of the same
+    loop was already symmetric; the garment side was not."""
+    import copy
+
+    without = copy.deepcopy(shirt)
+    for size in without["sizes"]:
+        del size["finished_measurements"]["shoulder_width"]
+
+    report = recommend(mature, without)
+    assert report.confidence < recommend(mature, shirt).confidence
+
+    shoulders = [l for l in report.to_json()["explanation"] if l["zone"] == "shoulders"]
+    assert shoulders and shoulders[0]["assessment"] == "unknown"
+
+    # Only critical zones earn the unknown line. A shirt has no thigh, and must not be marked
+    # down for a measurement its category does not have.
+    zones = {l["zone"] for l in recommend(mature, shirt).to_json()["explanation"]}
+    assert "thigh" not in zones and "inseam" not in zones

@@ -302,6 +302,19 @@ def recommend(profile: dict, garment: dict, disclosure_level: str = "explained")
             bm = body.get(mapping.body_key)
             is_critical = mapping.zone in crit
             if gm is None:
+                if is_critical:
+                    # A critical zone the garment never published is not the same as a zone this
+                    # category does not have. Skipping it took the zone out of the denominator
+                    # too, so a document that left out the shoulders of a shirt scored like one
+                    # that measured them and found them right.
+                    lines.append(
+                        ExplanationLine(
+                            zone=mapping.zone,
+                            assessment="unknown",
+                            critical=True,
+                            note="the garment does not publish this measurement",
+                        )
+                    )
                 continue
             if bm is None:
                 lines.append(
