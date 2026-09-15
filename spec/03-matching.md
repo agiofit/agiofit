@@ -25,6 +25,12 @@ normative is the *shape of the answer*.
    major version is `0`, a change of minor version is free to break and MUST be treated as
    unreadable; from `1.0` onwards the major version is the line. A newer patch MAY be read, and
    the consumer SHOULD say in `caveats` that part of the document was ignored.
+7. When a consumer cannot evaluate a zone that has been named — by the garment in
+   `critical_zones` or `intended_ease`, or by the consumer's own category defaults — it MUST name
+   that zone in `caveats`, and the absence MUST NOT raise `confidence`. A consumer that has no
+   critical zones for a category MUST say so rather than treat the empty set as coverage of
+   everything. A zone that was never looked at is not a zone that fitted, and an answer that
+   skipped the most important measurement must not score like one that checked it.
 
 ## The reference approach, in outline
 
@@ -64,5 +70,10 @@ about another's, and pretending otherwise is precisely how size charts earned th
 Confidence is a producer's own estimate, not a probability. The reference implementation combines
 zone coverage, coverage of *critical* zones specifically, the quality of the measurement sources,
 the margin between the best size and the runner-up, and the volume of relevant history.
+
+Critical zone coverage counts every critical zone the consumer knows about, including the ones it
+could not reach: a zone with no mapping, and a zone whose measurement the garment never published,
+both stay in the denominator. Leaving them out is what lets a document score better for saying
+less, and requirement 7 exists to forbid it.
 
 A consumer MUST NOT present a confidence from another implementation as comparable to its own.
