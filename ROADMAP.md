@@ -5,8 +5,20 @@
 Fit Profile, Cut Profile, Match Report, plus a reference implementation and
 tests. No vault, no protocol, no identity. Ships as a draft, breaks freely.
 
-**Done when** someone other than the author has produced a valid Cut Profile for a real
-garment and got a sensible answer out of it.
+**Done when** someone other than the author has measured a real garment and produced a valid
+Cut Profile from it, and that document, run against a profile supplied by the author, yields an
+answer of the shape this specification requires: a size, a confidence, a per-zone explanation, and
+a correction path.
+
+The tester supplies a garment, never a body: nothing in this test asks a stranger for their own
+measurements. And "sensible" is not the bar, because the arithmetic is explicitly not normative —
+the shape of the answer is what has to hold.
+
+**Not done if** two people measuring the same garment disagree by more than a production
+tolerance, which would mean the measuring instructions are not enough; if the tester cannot finish
+without asking the author a question, since every such question is a missing line in the tool; or
+if the document is valid but the answer carries a caveat about something the builder should have
+asked for and did not.
 
 ## v0.2 — the vault, by reference
 
