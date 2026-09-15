@@ -149,7 +149,10 @@
           "description": "Percentage of comfortable extension, not extension to failure. Only the comfortable range is usable for fit."
         },
         "recovery": { "enum": ["poor", "moderate", "good"] },
-        "composition": { "type": "string" }
+        "composition": {
+          "type": "string",
+          "description": "The fibre content as printed on the care label, copied as written. In the EU that label already follows Regulation 1007/2011: percentages and fibre names in descending order by weight."
+        }
       }
     },
     "production_tolerance": {
