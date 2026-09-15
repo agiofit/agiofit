@@ -4,6 +4,10 @@
 
 > **Status: v0.1 draft.** Nothing here is stable. Breaking changes are expected until v1.0.
 
+Specification, schemas and tools: **[agiofit.org](https://agiofit.org/)**. The schema `$id` URLs
+resolve there, and the [interactive guide](https://agiofit.org/guide/) walks through the model
+without reading a line of JSON.
+
 ## The problem
 
 Size recommendation already works — the market has proven that much. What every working
@@ -66,6 +70,11 @@ Three artefacts, that's all:
    explicit rather than a matter of good intentions.
 
 ## Quickstart
+
+**Without Python.** The Cut Profile builder at [agiofit.org/builder](https://agiofit.org/builder/) writes and validates a document in the
+browser from tape measurements. Nothing is uploaded.
+
+**With Python.**
 
 ```bash
 cd reference
