@@ -14,6 +14,9 @@
 - Sign off your commits: `git commit -s` (DCO).
 - Contributions are accepted under the repository licences: CC BY 4.0 for the specification,
   Apache 2.0 for the code. There is no CLA. See `LICENSING.md`.
+- Contributors are thanked by name in an acknowledgements section. That is the only
+  recognition the project offers: contributing creates no right to payment, ownership, or a
+  role in decisions beyond what `GOVERNANCE.md` describes.
 - Schema changes need an example document and a test.
 - Do not add a field without writing why it exists. Every field in v0.1 has a reason in `spec/`,
   and that property is worth keeping.
