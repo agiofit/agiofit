@@ -500,3 +500,53 @@ def test_every_category_either_has_critical_zones_or_declares_it_has_none():
 
     assert not (set(CRITICAL_ZONES) & CATEGORIES_WITHOUT_CRITICAL_DEFAULTS)
     assert set(CRITICAL_ZONES) | CATEGORIES_WITHOUT_CRITICAL_DEFAULTS == categories
+
+
+def _measured_by(profile, estimated_keys):
+    """The same body, with the named measurements estimated from size labels and the rest
+    taken with a tape. History and preferences are cleared, so only the measurements speak."""
+    import copy
+
+    profile = copy.deepcopy(profile)
+    profile["history"], profile["preferences"] = [], []
+    for key, measurement in profile["body"]["measurements"].items():
+        if key in estimated_keys:
+            measurement["source"], measurement["confidence"] = "estimated_from_size_labels", 1.0
+        else:
+            measurement["source"], measurement["confidence"] = "tape_measured", 0.9
+    return profile
+
+
+def test_label_estimates_cannot_lift_an_answer_past_the_cold_start_ceiling(mature, shirt):
+    """A body measurement estimated from size labels is a size label written down as a
+    measurement. With every measurement estimated that way, the answer used to come out at
+    0.63, above the 0.40 a cold start may claim from the very same kind of evidence."""
+    every_key = set(mature["body"]["measurements"])
+    report = recommend(_measured_by(mature, every_key), shirt)
+
+    assert report.confidence <= 0.40
+    assert any("estimated from size labels" in c for c in report.caveats)
+
+
+def test_guessing_the_critical_zones_costs_more_than_guessing_the_rest(mature, shirt):
+    """Above the ceiling, confidence is earned by the measurements that are not label
+    estimates, and a critical zone counts as much as it does when the size is chosen. Guessing
+    the shoulders and neck of a shirt used to score higher than guessing its chest, waist and
+    sleeve, the reverse of what matters."""
+    critical_guessed = recommend(
+        _measured_by(mature, {"shoulder_width", "neck_circumference"}), shirt
+    )
+    rest_guessed = recommend(
+        _measured_by(mature, {"chest_circumference", "waist_circumference", "arm_length"}), shirt
+    )
+
+    assert critical_guessed.confidence < rest_guessed.confidence
+
+
+def test_a_label_estimate_the_garment_does_not_use_costs_nothing_here(mature, shirt):
+    """The mature profile's inseam is a label estimate, and a shirt never looks at it. The
+    ceiling is about the evidence behind this answer, not about the profile as a whole."""
+    assert mature["body"]["measurements"]["inseam"]["source"] == "estimated_from_size_labels"
+    report = recommend(mature, shirt)
+
+    assert not any("estimated from size labels" in c for c in report.caveats)

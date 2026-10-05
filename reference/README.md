@@ -29,3 +29,7 @@ is named rather than dropped, and costs confidence rather than passing unnoticed
 schema is either mapped or knowingly unmapped, and every category either has critical zones or
 declares that it has none — both checked against the published schemas, so adding a zone or a
 category turns a test red instead of going unnoticed.
+
+And a measurement estimated from size labels cannot make an answer look surer than a cold start
+would: above 0.40, confidence is earned only by the measurements used that are not label
+estimates, critical zones counting triple.

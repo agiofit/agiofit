@@ -65,11 +65,21 @@ and derives a size from labels and outcomes, capped at 0.40 confidence.
 It deliberately refuses to do this across brands. A size label from one brand says close to nothing
 about another's, and pretending otherwise is precisely how size charts earned their reputation.
 
+The same ceiling holds when the evidence is the same. A body measurement whose `source` is
+`estimated_from_size_labels` is a size label written down as a measurement, and if it could lift
+an answer past 0.40, the refusal above would be undone one step removed. Above the ceiling, the
+reference implementation earns confidence only through the measurements used that are not label
+estimates, critical zones weighing three times as much, as they do when a size is chosen, and it
+says so in `caveats` whenever the ceiling lowers an answer. Other sources are left as they are: a
+measurement inferred from history can come from the finished measurements of garments that were
+kept, which are centimetres, not labels.
+
 ## Confidence
 
 Confidence is a producer's own estimate, not a probability. The reference implementation combines
 zone coverage, coverage of *critical* zones specifically, the quality of the measurement sources,
-the margin between the best size and the runner-up, and the volume of relevant history.
+the margin between the best size and the runner-up, and the volume of relevant history, under a
+ceiling when the measurements used were estimated from size labels (see *Cold start*).
 
 Critical zone coverage counts every critical zone the consumer knows about, including the ones it
 could not reach: a zone with no mapping, and a zone whose measurement the garment never published,

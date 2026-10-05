@@ -24,6 +24,14 @@ from .mapping import (
 SCHEMA_VERSION = "0.1.0"
 IN_TO_CM = 2.54
 
+# A critical zone weighs three times as much as any other. One constant, because it is used
+# twice: to choose the size, and to decide how much of an answer rests on label estimates.
+CRITICAL_WEIGHT = 3.0
+
+# The most a cold start may claim, and the most an answer may claim when the measurements behind
+# it are label estimates. One constant for both, because both rest on the same evidence.
+COLD_START_CEILING = 0.40
+
 
 class UnsupportedSchemaVersion(ValueError):
     """Raised when a document is written to a major version this code cannot read."""
@@ -370,7 +378,7 @@ def recommend(profile: dict, garment: dict, disclosure_level: str = "explained")
             zone_penalty = distance / scale
             if is_critical and ease < lo:
                 zone_penalty *= 1.5  # too tight in a zone that cannot be let out
-            w = 3.0 if is_critical else 1.0
+            w = CRITICAL_WEIGHT if is_critical else 1.0
             penalty += zone_penalty * w
             weight_total += w
 
@@ -463,6 +471,14 @@ def recommend(profile: dict, garment: dict, disclosure_level: str = "explained")
         n_sizes=len(scored),
         unreachable_critical_n=len(unreachable_critical),
     )
+
+    ceiling = _label_estimate_ceiling(body, best_lines)
+    if confidence > ceiling:
+        confidence = ceiling
+        caveats.append(
+            "Some of the measurements used were estimated from size labels, so confidence is "
+            "capped as it is for an answer drawn from purchase history alone."
+        )
 
     if fallback_zones:
         caveats.append(
@@ -557,6 +573,32 @@ def recommend(profile: dict, garment: dict, disclosure_level: str = "explained")
         improve_by=_improvements(body, profile, garment),
         computed_at=computed_at,
     )
+
+
+def _label_estimate_ceiling(body: dict, lines: list[ExplanationLine]) -> float:
+    """How confident an answer may be, given which of its measurements are label estimates.
+
+    A size label from one brand says close to nothing about another's, which is why a cold
+    start is capped. A body measurement estimated from size labels is that same evidence
+    written down as a measurement, and letting it lift an answer past the cap would undo the
+    cap one step removed. Above the ceiling, confidence is earned only by the measurements
+    used that are not label estimates, critical zones weighing as much as they do when the
+    size is chosen. Measurements the garment does not use are not counted, either way.
+    """
+    body_keys = {m.zone: m.body_key for m in ZONE_MAPPINGS}
+    total = estimated = 0.0
+    for line in lines:
+        if line.assessment == "unknown":
+            continue
+        weight = CRITICAL_WEIGHT if line.critical else 1.0
+        total += weight
+        measurement = body.get(body_keys.get(line.zone, "")) or {}
+        if measurement.get("source") == "estimated_from_size_labels":
+            estimated += weight
+    if not total or not estimated:
+        return 1.0
+    measured_share = (total - estimated) / total
+    return round(COLD_START_CEILING + (1.0 - COLD_START_CEILING) * measured_share, 3)
 
 
 def _confidence(
@@ -723,7 +765,7 @@ def _history_only_size(profile: dict, garment: dict) -> tuple[str | None, float,
     best = max(scores, key=scores.get)
 
     # Deliberately capped. A size guessed from labels is a starting point, never a confident answer.
-    confidence = min(0.40, 0.18 + 0.07 * len(candidates))
+    confidence = min(COLD_START_CEILING, 0.18 + 0.07 * len(candidates))
     agreement = scores[best] / sum(scores.values())
     confidence *= 0.6 + 0.4 * agreement
     return best, round(confidence, 3), [
