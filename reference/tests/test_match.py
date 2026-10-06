@@ -599,3 +599,63 @@ def test_with_no_level_requested_the_persons_default_applies(mature, shirt):
 
     # The person's level is a default, not a ceiling: a request that names a level gets it.
     assert level(mature, disclosure_level="scoped") == "scoped"
+
+
+def _trousers():
+    """Two sizes of a plain trouser, enough to put the hips in play."""
+    return {
+        "schema_version": "0.1.0",
+        "cut_profile_id": "test-trousers-hips",
+        "category": "trousers",
+        "size_system": "IT",
+        "measurement_method": "circumference",
+        "provenance": {"published_by": "brand"},
+        "sizes": [
+            {
+                "size_label": label,
+                "finished_measurements": {
+                    "waist_width": {"value": waist, "unit": "cm"},
+                    "hip_width": {"value": hip, "unit": "cm"},
+                },
+            }
+            for label, waist, hip in (("48", 90, 104), ("50", 94, 108))
+        ],
+    }
+
+
+def test_a_never_shared_measurement_leaves_no_trace_at_any_level(mature):
+    """The mature profile lists its hips in never_share. At scoped the report used to carry
+    an ease of 5 cm on a size that publishes 104 cm at the hip, and 104 - 5 is the 99 the
+    person had withheld. A judgement alone does almost as much: "as cut", read against the
+    ease band, places the hips inside an 8 cm window."""
+    assert mature["disclosure_defaults"]["never_share"] == ["hip_circumference"]
+    trousers = _trousers()
+
+    # The hips still count towards the answer: they are used where the profile lives.
+    report = recommend(mature, trousers, disclosure_level="scoped")
+    assert any(line.zone == "hip" for line in report.explanation)
+
+    for level in ("explained", "scoped", "full"):
+        out = recommend(mature, trousers, disclosure_level=level).to_json()
+        zones = {line["zone"] for line in out["explanation"]}
+        assert "hip" not in zones
+        assert "waist" in zones, "only the listed measurement is withheld"
+        assert any("at the person's request" in c for c in out["caveats"])
+
+    # Where nothing is explained there is nothing to withhold, and nothing to announce.
+    out = recommend(mature, trousers, disclosure_level="result_only").to_json()
+    assert not any("at the person's request" in c for c in out["caveats"])
+
+
+def test_never_sharing_the_body_layer_withholds_every_zone(mature, shirt):
+    """never_share names measurement keys or whole layers, and the body layer is every
+    measurement in it."""
+    import copy
+
+    profile = copy.deepcopy(mature)
+    profile["disclosure_defaults"]["never_share"] = ["body"]
+    out = recommend(profile, shirt, disclosure_level="scoped").to_json()
+
+    assert out["explanation"] == []
+    assert out["recommended_size"] is not None
+    assert any("at the person's request" in c for c in out["caveats"])

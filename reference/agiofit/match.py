@@ -160,6 +160,9 @@ class MatchReport:
     improve_by: list[str] = field(default_factory=list)
     computed_at: str = ""
     correctable: bool = True
+    # Zones whose explanation never leaves, because the person listed their measurement in
+    # never_share. Kept on the report and never serialised: to_json reads it to drop the lines.
+    withheld_zones: list[str] = field(default_factory=list)
 
     def to_json(self) -> dict:
         """Serialise at the declared disclosure level.
@@ -169,6 +172,10 @@ class MatchReport:
         recover the body measurement the person chose not to send. The numbers are admitted by
         naming the levels that allow them, and a level this code does not know is refused, so a
         typo can only ever stop an answer, never widen it.
+
+        A zone whose measurement the person listed in never_share is left out altogether,
+        judgement included: "as cut", read against the published garment and its ease band,
+        narrows the body measurement to the width of the band.
         """
         level = _checked_level(self.disclosure_level, "This report")
         out = {
@@ -189,6 +196,8 @@ class MatchReport:
         numeric = level in ("scoped", "full")
         lines = []
         for line in self.explanation:
+            if line.zone in self.withheld_zones:
+                continue
             d = {k: v for k, v in asdict(line).items() if v is not None}
             if not numeric:
                 d.pop("ease_cm", None)
@@ -197,6 +206,12 @@ class MatchReport:
                 d["intended_ease_cm"] = list(d["intended_ease_cm"])
             lines.append(d)
         out["explanation"] = lines
+        if len(lines) < len(self.explanation):
+            # Said only where an explanation is sent: at result_only there is nothing to
+            # withhold, and announcing it would only tell the verifier there is something.
+            out["caveats"] = self.caveats + [
+                "Some zones are not explained here, at the person's request."
+            ]
         return out
 
 
@@ -309,6 +324,7 @@ def recommend(
     profile: dict, garment: dict, disclosure_level: str | None = None
 ) -> MatchReport:
     disclosure_level = _disclosure_level(profile, disclosure_level)
+    withheld_zones = _withheld_zones(profile)
     category = garment.get("category", "")
     flat = garment.get("measurement_method") == "flat_laid"
     crit = critical_zones(category, garment)
@@ -504,6 +520,7 @@ def recommend(
             ),
             improve_by=_improvements(body, profile, garment),
             computed_at=computed_at,
+            withheld_zones=withheld_zones,
         )
 
     best_score, best_label, best_lines = scored[0]
@@ -621,7 +638,22 @@ def recommend(
         caveats=caveats,
         improve_by=_improvements(body, profile, garment),
         computed_at=computed_at,
+        withheld_zones=withheld_zones,
     )
+
+
+def _withheld_zones(profile: dict) -> list[str]:
+    """The zones whose explanation must never leave, because the person listed them.
+
+    never_share names measurement keys or whole layers. A zone is withheld when its body
+    measurement is named, or when the whole body layer is. The measurement still counts
+    towards the answer: the computation happens where the profile lives, and what the
+    list governs is what leaves it.
+    """
+    never = set((profile.get("disclosure_defaults") or {}).get("never_share") or [])
+    if not never:
+        return []
+    return sorted(m.zone for m in ZONE_MAPPINGS if "body" in never or m.body_key in never)
 
 
 def _label_estimate_ceiling(body: dict, lines: list[ExplanationLine]) -> float:

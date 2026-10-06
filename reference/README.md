@@ -36,4 +36,5 @@ estimates, critical zones counting triple.
 
 The disclosure level is held to the same standard: a level this implementation does not recognise
 is refused rather than serialised, and when no level is requested the person's `default_level`
-applies, falling back to `result_only`.
+applies, falling back to `result_only`. A measurement the person lists in `never_share` never
+leaves, as a number or as a judgement, at any level, though it still counts towards the answer.
