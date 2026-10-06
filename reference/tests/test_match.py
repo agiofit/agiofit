@@ -7,6 +7,7 @@ from agiofit import (
     load_fit_profile,
     load_cut_profile,
     recommend,
+    UnknownDisclosureLevel,
     UnsupportedSchemaVersion,
 )
 
@@ -262,7 +263,7 @@ def test_a_reversed_ease_band_falls_back_and_says_so(mature, shirt):
 
     garment = copy.deepcopy(shirt)
     garment["intended_ease"]["chest"] = {"min": 12.0, "max": 8.0, "unit": "cm"}
-    out = recommend(mature, garment).to_json()
+    out = recommend(mature, garment, disclosure_level="explained").to_json()
 
     assert any("minimum exceeds its maximum" in c for c in out["caveats"])
     assert out["confidence"] < recommend(mature, shirt).to_json()["confidence"]
@@ -305,7 +306,7 @@ def test_a_size_already_returned_is_not_recommended_again(mature, shirt):
 
     profile = copy.deepcopy(mature)
     profile["history"].append(_returned(shirt, first))
-    out = recommend(profile, shirt).to_json()
+    out = recommend(profile, shirt, disclosure_level="explained").to_json()
 
     assert out["recommended_size"] != first
     # Removed, not hidden: it comes back as an alternative carrying the reason.
@@ -453,7 +454,7 @@ def test_a_critical_measurement_the_garment_omits_lowers_confidence(mature, shir
     for size in without["sizes"]:
         del size["finished_measurements"]["shoulder_width"]
 
-    report = recommend(mature, without)
+    report = recommend(mature, without, disclosure_level="explained")
     assert report.confidence < recommend(mature, shirt).confidence
 
     shoulders = [l for l in report.to_json()["explanation"] if l["zone"] == "shoulders"]
@@ -461,7 +462,10 @@ def test_a_critical_measurement_the_garment_omits_lowers_confidence(mature, shir
 
     # Only critical zones earn the unknown line. A shirt has no thigh, and must not be marked
     # down for a measurement its category does not have.
-    zones = {l["zone"] for l in recommend(mature, shirt).to_json()["explanation"]}
+    zones = {
+        l["zone"]
+        for l in recommend(mature, shirt, disclosure_level="explained").to_json()["explanation"]
+    }
     assert "thigh" not in zones and "inseam" not in zones
 
 
@@ -550,3 +554,48 @@ def test_a_label_estimate_the_garment_does_not_use_costs_nothing_here(mature, sh
     report = recommend(mature, shirt)
 
     assert not any("estimated from size labels" in c for c in report.caveats)
+
+
+def test_an_unknown_disclosure_level_fails_closed(mature, shirt):
+    """Serialisation removes what a level forbids, so a level it did not recognise used to
+    remove nothing: "Result_only", capitalised, came out with the numeric ease that the
+    arithmetic leak exists to withhold."""
+    import copy
+
+    with pytest.raises(UnknownDisclosureLevel):
+        recommend(mature, shirt, disclosure_level="Result_only")
+
+    # The same guard where the leak would happen, for a report built or changed by hand.
+    report = recommend(mature, shirt, disclosure_level="result_only")
+    report.disclosure_level = "resultonly"
+    with pytest.raises(UnknownDisclosureLevel):
+        report.to_json()
+
+    # And from the profile, which nothing guarantees was validated before it got here.
+    profile = copy.deepcopy(mature)
+    profile["disclosure_defaults"]["default_level"] = "Result_only"
+    with pytest.raises(UnknownDisclosureLevel):
+        recommend(profile, shirt)
+
+
+def test_with_no_level_requested_the_persons_default_applies(mature, shirt):
+    """Both example profiles declare result_only, and both used to come out explained: more
+    disclosure than the person had written down."""
+    import copy
+
+    def level(profile, **kw):
+        return recommend(profile, shirt, **kw).to_json()["disclosure_level"]
+
+    assert mature["disclosure_defaults"]["default_level"] == "result_only"
+    assert level(mature) == "result_only"
+
+    profile = copy.deepcopy(mature)
+    profile["disclosure_defaults"]["default_level"] = "explained"
+    assert level(profile) == "explained"
+
+    # Nothing declared means the least disclosure, not the implementation's preference.
+    del profile["disclosure_defaults"]
+    assert level(profile) == "result_only"
+
+    # The person's level is a default, not a ceiling: a request that names a level gets it.
+    assert level(mature, disclosure_level="scoped") == "scoped"

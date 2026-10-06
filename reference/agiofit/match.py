@@ -37,6 +37,48 @@ class UnsupportedSchemaVersion(ValueError):
     """Raised when a document is written to a major version this code cannot read."""
 
 
+# The four levels a report can be serialised at, in increasing order of disclosure.
+DISCLOSURE_LEVELS: tuple[str, ...] = ("result_only", "explained", "scoped", "full")
+
+
+class UnknownDisclosureLevel(ValueError):
+    """Raised when asked for a disclosure level this code does not know.
+
+    Serialisation removes what a level forbids, so an unrecognised level used to remove
+    nothing: "Result_only" produced the full numeric ease, the one output the arithmetic
+    leak exists to prevent. A typo has to fail closed, and refusing is the only way to fail
+    closed without guessing what the caller meant.
+    """
+
+
+def _checked_level(level: object, origin: str) -> str:
+    if level not in DISCLOSURE_LEVELS:
+        raise UnknownDisclosureLevel(
+            f"{origin} asks for disclosure level {level!r}; the known levels are "
+            + ", ".join(DISCLOSURE_LEVELS)
+            + "."
+        )
+    return str(level)
+
+
+def _disclosure_level(profile: dict, requested: str | None) -> str:
+    """The level to serialise at: the one requested, else the person's, else the least.
+
+    The profile's default_level is the person's standing preference. Ignoring it meant that
+    both example profiles, which declare result_only, came out at explained: more disclosure
+    than the person had written down. It is a default, not a ceiling. A request that names a
+    level still gets it, because in this implementation whoever asks is the vault, and
+    whether a verifier may ever receive more than the person's default is vault policy, not
+    something a matcher can decide.
+    """
+    if requested is not None:
+        return _checked_level(requested, "The request")
+    declared = (profile.get("disclosure_defaults") or {}).get("default_level")
+    if declared is not None:
+        return _checked_level(declared, "The fit profile")
+    return DISCLOSURE_LEVELS[0]
+
+
 def _version_notes(profile: dict, garment: dict) -> list[str]:
     """Refuse a different major version, note a newer minor one.
 
@@ -110,7 +152,7 @@ class MatchReport:
     cut_profile_id: str
     recommended_size: str | None
     confidence: float
-    disclosure_level: str = "explained"
+    disclosure_level: str = "result_only"
     alternatives: list[dict] = field(default_factory=list)
     explanation: list[ExplanationLine] = field(default_factory=list)
     based_on: dict = field(default_factory=dict)
@@ -124,13 +166,16 @@ class MatchReport:
 
         At ``result_only`` and ``explained`` the numeric ease values are stripped. Publishing both
         the ease and the garment measurement would let anyone subtract one from the other and
-        recover the body measurement the person chose not to send.
+        recover the body measurement the person chose not to send. The numbers are admitted by
+        naming the levels that allow them, and a level this code does not know is refused, so a
+        typo can only ever stop an answer, never widen it.
         """
+        level = _checked_level(self.disclosure_level, "This report")
         out = {
             "schema_version": SCHEMA_VERSION,
             "cut_profile_id": self.cut_profile_id,
             "computed_at": self.computed_at,
-            "disclosure_level": self.disclosure_level,
+            "disclosure_level": level,
             "recommended_size": self.recommended_size,
             "confidence": round(self.confidence, 2),
             "correctable": True,
@@ -138,13 +183,14 @@ class MatchReport:
             "caveats": self.caveats,
             "improve_by": self.improve_by,
         }
-        if self.disclosure_level == "result_only":
+        if level == "result_only":
             return out
         out["alternatives"] = self.alternatives
+        numeric = level in ("scoped", "full")
         lines = []
         for line in self.explanation:
             d = {k: v for k, v in asdict(line).items() if v is not None}
-            if self.disclosure_level == "explained":
+            if not numeric:
                 d.pop("ease_cm", None)
                 d.pop("intended_ease_cm", None)
             elif d.get("intended_ease_cm"):
@@ -259,7 +305,10 @@ def _assess(ease: float, lo: float, hi: float, slack: float) -> str:
 # --------------------------------------------------------------------------- the matcher
 
 
-def recommend(profile: dict, garment: dict, disclosure_level: str = "explained") -> MatchReport:
+def recommend(
+    profile: dict, garment: dict, disclosure_level: str | None = None
+) -> MatchReport:
+    disclosure_level = _disclosure_level(profile, disclosure_level)
     category = garment.get("category", "")
     flat = garment.get("measurement_method") == "flat_laid"
     crit = critical_zones(category, garment)

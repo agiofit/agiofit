@@ -79,8 +79,11 @@ browser from tape measurements. Nothing is uploaded.
 ```bash
 cd reference
 pip install -e .
-python -m agiofit.cli ../examples/profile-mature.json ../examples/cut-shirt.json
+python -m agiofit.cli ../examples/profile-mature.json ../examples/cut-shirt.json explained
 ```
+
+The example profile asks for `result_only` unless told otherwise, so the command names
+`explained` to show the per-zone reasoning.
 
 Or from Python:
 

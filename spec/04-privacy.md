@@ -14,6 +14,11 @@ Four levels, declared in the match report itself:
 | `scoped` | Plus the specific measurements needed for this garment. |
 | `full` | The whole profile. Should be rare, and a consumer SHOULD justify it. |
 
+When a request names no level, the report MUST be serialised at the level the person declared in
+`disclosure_defaults.default_level`, and at `result_only` when the profile declares none. The
+person's level is a default, not a ceiling: a request may name another level, and whether a
+verifier may ever receive more than the person's default is for the vault to decide.
+
 The intended architecture is that the *computation happens where the profile lives* — a vault, a
 wallet, or a fit provider the person chose — and only the result travels. A retailer does not need
 a chest measurement to sell a shirt. It needs a size.
@@ -23,7 +28,8 @@ a chest measurement to sell a shirt. It needs a size.
 At `explained`, numeric ease values MUST be omitted. Garment measurements are public. Ease is
 garment minus body. Publishing both hands over the body measurement to anyone willing to subtract,
 which defeats the entire point of not sending it. The reference implementation enforces this in
-serialisation rather than trusting callers, and there is a test for it.
+serialisation rather than trusting callers, refuses a level it does not recognise instead of
+guessing what was meant, and there is a test for each.
 
 ## Regulatory notes
 

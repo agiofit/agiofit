@@ -9,6 +9,7 @@ from .match import (
     MatchReport,
     load_fit_profile,
     load_cut_profile,
+    UnknownDisclosureLevel,
     UnsupportedSchemaVersion,
     recommend,
 )
@@ -18,6 +19,7 @@ __all__ = [
     "MatchReport",
     "load_fit_profile",
     "load_cut_profile",
+    "UnknownDisclosureLevel",
     "UnsupportedSchemaVersion",
     "recommend",
 ]

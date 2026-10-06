@@ -6,7 +6,7 @@ sufficient and to make the shape of a good answer concrete — not to be the bes
 ```bash
 pip install -e ".[dev]"
 pytest
-python -m agiofit.cli ../examples/profile-mature.json ../examples/cut-shirt.json
+python -m agiofit.cli ../examples/profile-mature.json ../examples/cut-shirt.json explained
 python -m agiofit.cli ../examples/profile-cold-start.json ../examples/cut-shirt.json result_only
 ```
 
@@ -33,3 +33,7 @@ category turns a test red instead of going unnoticed.
 And a measurement estimated from size labels cannot make an answer look surer than a cold start
 would: above 0.40, confidence is earned only by the measurements used that are not label
 estimates, critical zones counting triple.
+
+The disclosure level is held to the same standard: a level this implementation does not recognise
+is refused rather than serialised, and when no level is requested the person's `default_level`
+applies, falling back to `result_only`.
