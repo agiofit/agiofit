@@ -270,15 +270,31 @@ def _sizes_already_returned(profile: dict, garment: dict) -> set[str]:
     return {l for l in labels if l}
 
 
-def _history_offset(profile: dict, garment: dict) -> tuple[float, int, int]:
-    """Learned bias from what actually happened, in cm of ease.
+# Which way an outcome pushes the ease when it does not say where the garment was wrong.
+OUTCOME_DIRECTION = {
+    "returned_too_small": 1.0,
+    "exchanged_for_larger": 1.0,
+    "returned_too_large": -1.0,
+    "exchanged_for_smaller": -1.0,
+}
 
-    Returns (offset_cm, total_relevant_outcomes, same_brand_outcomes). Same-brand outcomes count
-    double, because sizing drift is overwhelmingly brand-specific.
+# Which way, and how far, a per-zone verdict pushes the ease of that zone.
+VERDICT_DIRECTION = {"too_tight": 1.0, "snug": 0.5, "right": 0.0, "roomy": -0.5, "too_loose": -1.0}
+
+
+def _history_offsets(profile: dict, garment: dict) -> tuple[dict[str, float], int, int]:
+    """Learned bias from what actually happened, in cm of ease, zone by zone.
+
+    Returns (offsets_by_zone, total_relevant_outcomes, same_brand_outcomes). Same-brand outcomes
+    count double, because sizing drift is overwhelmingly brand-specific. A returned or exchanged
+    garment that says where it was wrong, through zone_feedback, moves only those zones, each in
+    the direction of its verdict; a verdict on "overall" covers the zones not named one by one.
+    Only an outcome that does not say where moves every zone the same way. A kept garment moves
+    nothing: what it records is what was accepted.
     """
     category = garment.get("category")
     brand = garment.get("brand")
-    direction = 0.0
+    directions = {m.zone: 0.0 for m in ZONE_MAPPINGS}
     total = 0
     same_brand = 0
     for item in profile.get("history", []):
@@ -290,19 +306,24 @@ def _history_offset(profile: dict, garment: dict) -> tuple[float, int, int]:
         if brand and ref.get("brand") == brand:
             weight = 2.0
             same_brand += 1
-        outcome = item.get("outcome")
-        if outcome in ("returned_too_small", "exchanged_for_larger"):
-            direction += weight
-        elif outcome in ("returned_too_large", "exchanged_for_smaller"):
-            direction -= weight
-        elif outcome == "kept" and item.get("kept_despite"):
-            # Kept in spite of something: a real signal, but a weak one. The person tolerated it.
-            direction += 0.0
+        outcome = OUTCOME_DIRECTION.get(item.get("outcome"))
+        if outcome is None:
+            continue
+        verdicts = {f.get("zone"): f.get("verdict") for f in item.get("zone_feedback") or []}
+        for zone in directions:
+            if verdicts:
+                verdict = verdicts.get(zone, verdicts.get("overall"))
+                directions[zone] += weight * VERDICT_DIRECTION.get(verdict, 0.0)
+            else:
+                directions[zone] += weight * outcome
     if total == 0:
-        return 0.0, 0, 0
+        return {}, 0, 0
     # 1.5 cm of ease per net weighted step, capped so history can nudge but not override the body.
-    offset = max(-3.0, min(3.0, 1.5 * direction / max(1.0, total)))
-    return offset, total, same_brand
+    offsets = {
+        zone: max(-3.0, min(3.0, 1.5 * direction / max(1.0, total)))
+        for zone, direction in directions.items()
+    }
+    return offsets, total, same_brand
 
 
 def _assess(ease: float, lo: float, hi: float, slack: float) -> str:
@@ -335,7 +356,7 @@ def recommend(
     declared_ease = garment.get("intended_ease") or {}
 
     body = ((profile.get("body") or {}).get("measurements")) or {}
-    history_offset, history_n, brand_history_n = _history_offset(profile, garment)
+    history_offsets, history_n, brand_history_n = _history_offsets(profile, garment)
 
     caveats: list[str] = list(version_notes)
     improve_by: list[str] = []
@@ -425,7 +446,7 @@ def recommend(
                 fallback_zones += 1
 
             shift = _preference_shift(profile, category, mapping.zone, mapping.linear)
-            shift += history_offset * mapping.offset_scale
+            shift += history_offsets.get(mapping.zone, 0.0) * mapping.offset_scale
             lo, hi = lo + shift, hi + shift
 
             meas_tol = float(gm.get("tolerance", prod_tol_cm)) + float(bm.get("tolerance", 0.5))
@@ -483,7 +504,7 @@ def recommend(
         "preference_signals": len(profile.get("preferences", [])),
         "history_signals": history_n,
         "brand_specific_history_signals": brand_history_n,
-        "learned_offset_applied": abs(history_offset) > 0.01,
+        "learned_offset_applied": any(abs(o) > 0.01 for o in history_offsets.values()),
     }
 
     if not scored:

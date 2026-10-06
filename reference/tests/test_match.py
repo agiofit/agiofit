@@ -659,3 +659,35 @@ def test_never_sharing_the_body_layer_withholds_every_zone(mature, shirt):
     assert out["explanation"] == []
     assert out["recommended_size"] is not None
     assert any("at the person's request" in c for c in out["caveats"])
+
+
+def _bands(profile, garment):
+    """The ease band each zone was judged against, after preferences and history."""
+    report = recommend(profile, garment, disclosure_level="scoped")
+    return {line.zone: line.intended_ease_cm for line in report.explanation}
+
+
+def test_history_corrects_the_zone_it_names_not_every_zone(mature, shirt):
+    """The mature profile's returns say "shoulders too tight, chest right". The correction
+    used to land on every zone by fixed weights, the chest taking four times what the
+    shoulders got: +2.0 cm on the zone that was right, +0.5 on the one that was wrong."""
+    declared = shirt["intended_ease"]
+    bands = _bands(mature, shirt)
+
+    # The chest was right, so its band is the one the brand declared.
+    assert bands["chest"] == (declared["chest"]["min"], declared["chest"]["max"])
+    # The shoulders were too tight, so their band moves towards more ease.
+    assert bands["shoulders"][0] > declared["shoulders"]["min"]
+
+
+def test_an_outcome_that_does_not_say_where_still_moves_every_zone(mature, shirt):
+    """Whoever did not say where the garment was wrong loses nothing: the outcome alone
+    still moves every zone, by the per-zone scale."""
+    import copy
+
+    profile = copy.deepcopy(mature)
+    for item in profile["history"]:
+        item.pop("zone_feedback", None)
+    bands = _bands(profile, shirt)
+
+    assert bands["chest"][0] > shirt["intended_ease"]["chest"]["min"]
