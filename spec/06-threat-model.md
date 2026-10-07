@@ -14,6 +14,11 @@ centimetres: pregnancy, rapid weight change, illness, treatment, an eating disor
 history layer this specification treats as its most valuable signal is also its most sensitive
 content, and both facts have to be designed for at once.
 
+The format keeps only the latest value of each measurement (`01-fit-profile.md`), so a series of
+earlier values exists only where someone keeps one: a vault, or anyone who has received the profile
+or its reports over time. The outcomes, correction events and `kept_despite` records of the history
+layer do travel with the profile, because matching needs them.
+
 A related legal note extends `04-privacy.md`: measurements captured by tape are ordinary personal
 data, but *inferences drawn from their trajectory* can land in special categories — health,
 pregnancy — regardless of how innocently each individual value was collected. Aggregation changes

@@ -12,8 +12,16 @@ Measurements, each with `value`, `unit`, `source`, `observed_at` and ideally `to
 measured with a tape are both numbers; only the tolerance distinguishes them, and the matcher uses
 it to widen or narrow its judgement.
 
-Producers SHOULD NOT silently update a measurement in place. Bodies change, and an `observed_at`
-from three years ago is information, not noise.
+A profile holds one value per measurement, the latest. When a measurement is taken again, the new
+one replaces the old one whole. `observed_at` is when the value was measured, not when the profile
+was last saved (that is `updated_at`), and producers MUST NOT change `observed_at` unless the
+measurement is taken again. Bodies change, and an `observed_at` from three years ago is
+information, not noise.
+
+The profile does not carry earlier values, and producers MUST NOT add them, under `x_` keys or
+anywhere else. A series of measurements over time can reveal a pregnancy or an illness
+(`06-threat-model.md`), and matching needs only the latest value. A vault MAY keep earlier values
+for the person, outside the profile; nothing in this format requires keeping them.
 
 `morphology` exists because two people with identical girths can need different garments — sloped
 shoulders, a long torso. It is deliberately qualitative: a five-point scale a person can answer
