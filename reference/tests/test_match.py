@@ -691,3 +691,57 @@ def test_an_outcome_that_does_not_say_where_still_moves_every_zone(mature, shirt
     bands = _bands(profile, shirt)
 
     assert bands["chest"][0] > shirt["intended_ease"]["chest"]["min"]
+
+
+def _slim(shirt):
+    """The same sizes, with the brand declaring less ease at the chest and waist: a slimmer
+    intended fit, where the 40 and the 41 each get something wrong."""
+    import copy
+
+    slim = copy.deepcopy(shirt)
+    slim["cut_profile_id"] = "sartoria-esempio:POPLIN-SLIM:2026"
+    slim["style_id"] = "POPLIN-SLIM"
+    slim["style_name"] = "Slim Poplin Shirt"
+    for zone in ("chest", "waist"):
+        slim["intended_ease"][zone] = {"min": 6, "max": 12, "unit": "cm"}
+    return slim
+
+
+def test_a_flaw_kept_before_counts_for_less_than_one_returned_before(mature, shirt):
+    """The mature profile kept the 41 despite a roomy waist, and sent back two 40s for tight
+    shoulders. On a slimmer cut the 40 has snug shoulders and the 41 a loose waist. The kept
+    compromise used to count for nothing, and the answer was the 40: the tight shoulders again."""
+    import copy
+
+    slim = _slim(shirt)
+    report = recommend(mature, slim, disclosure_level="explained")
+    assert report.recommended_size == "41"
+    # The judgement is not softened: the waist is still reported as it is.
+    waist = next(line for line in report.explanation if line.zone == "waist")
+    assert waist.assessment == "too_loose"
+
+    without = copy.deepcopy(mature)
+    for item in without["history"]:
+        item.pop("kept_despite", None)
+    assert recommend(without, slim).recommended_size == "40"
+
+
+def test_a_kept_flaw_teaches_only_the_direction_it_was_kept_in(mature, shirt):
+    """kept_despite names a zone, not a direction. Without a verdict on that zone in the same
+    entry there is nothing to learn, and a flaw the other way is not what was tolerated."""
+    import copy
+
+    slim = _slim(shirt)
+
+    no_verdict = copy.deepcopy(mature)
+    for item in no_verdict["history"]:
+        kept = item.get("kept_despite") or []
+        item["zone_feedback"] = [f for f in item.get("zone_feedback", []) if f["zone"] not in kept]
+    assert recommend(no_verdict, slim).recommended_size == "40"
+
+    other_way = copy.deepcopy(mature)
+    for item in other_way["history"]:
+        for verdict in item.get("zone_feedback", []):
+            if verdict["zone"] in (item.get("kept_despite") or []):
+                verdict["verdict"] = "snug"
+    assert recommend(other_way, slim).recommended_size == "40"

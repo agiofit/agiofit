@@ -50,13 +50,20 @@ loosely, which is the honest outcome. Critical zones carry triple weight, and be
 critical zone is penalised more heavily than being too loose, because a shoulder seam cannot be let
 out.
 
-Three details worth stealing:
+Four details worth stealing:
 
 - **Learned offsets go where the history says the garment was wrong.** An outcome that carries
   `zone_feedback` moves only the zones it names, each in the direction of its verdict, and a
   verdict on `overall` covers the zones not named one by one. Only an outcome that does not say
   where moves every zone, by the scale below. A kept garment moves nothing: it records what was
   accepted.
+- **What was accepted counts for less next time.** When a kept garment lists a zone in
+  `kept_despite` and the same entry's `zone_feedback` says which way that zone was off, a later
+  miss in that direction, on that zone, in the same category, counts half as much when sizes are
+  compared, whatever the brand: the compromise is the person's, not the brand's. The judgement in
+  the report is not softened, so a waist that is too loose is still reported as too loose. A zone
+  listed without a verdict of its own says what was tolerated but not which way, and teaches
+  nothing.
 - **Learned offsets are scaled per zone.** A brand that runs small runs small in the torso. Shifting
   a collar by the same number of centimetres turns a useful correction into a wrong answer, since a
   centimetre at the neck is an entire size.

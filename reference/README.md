@@ -41,3 +41,6 @@ leaves, as a number or as a judgement, at any level, though it still counts towa
 
 History is read at the resolution it was written: a return that says where the garment was
 wrong corrects those zones, and only a return that does not say where moves them all.
+
+A flaw the person kept a garment despite, in the direction its verdict gives, counts half as much
+the next time sizes are compared, though the report still names it.

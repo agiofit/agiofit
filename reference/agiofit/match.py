@@ -281,6 +281,14 @@ OUTCOME_DIRECTION = {
 # Which way, and how far, a per-zone verdict pushes the ease of that zone.
 VERDICT_DIRECTION = {"too_tight": 1.0, "snug": 0.5, "right": 0.0, "roomy": -0.5, "too_loose": -1.0}
 
+# The direction of a flaw, from the verdict that names it. "right" names no flaw.
+FLAW_DIRECTION = {"too_tight": "tight", "snug": "tight", "roomy": "loose", "too_loose": "loose"}
+
+# How much a flaw counts when the person has already kept a garment despite it, in that
+# zone and in that direction. Half is a choice, not a measurement: one number to change
+# when evidence says so.
+TOLERATED_WEIGHT = 0.5
+
 
 def _history_offsets(profile: dict, garment: dict) -> tuple[dict[str, float], int, int]:
     """Learned bias from what actually happened, in cm of ease, zone by zone.
@@ -290,7 +298,7 @@ def _history_offsets(profile: dict, garment: dict) -> tuple[dict[str, float], in
     garment that says where it was wrong, through zone_feedback, moves only those zones, each in
     the direction of its verdict; a verdict on "overall" covers the zones not named one by one.
     Only an outcome that does not say where moves every zone the same way. A kept garment moves
-    nothing: what it records is what was accepted.
+    nothing here: what it records is what was accepted, and _tolerances reads that.
     """
     category = garment.get("category")
     brand = garment.get("brand")
@@ -326,6 +334,31 @@ def _history_offsets(profile: dict, garment: dict) -> tuple[dict[str, float], in
     return offsets, total, same_brand
 
 
+def _tolerances(profile: dict, garment: dict) -> dict[str, set[str]]:
+    """The flaws this person has already accepted, zone by zone, in this category.
+
+    A garment kept despite a zone records a tolerated compromise: a waist found roomy, and the
+    shirt kept anyway. kept_despite says which zone; the verdict on that zone in the same entry
+    says which way. A zone listed without a verdict of its own says what was tolerated but not
+    which way, and teaches nothing, because guessing the direction would be inventing the lesson.
+    The compromise is the person's, not the brand's, so any brand counts. And it is a set: the
+    same garment imported twice teaches it once.
+    """
+    category = garment.get("category")
+    tolerated: dict[str, set[str]] = {}
+    for item in profile.get("history", []):
+        if item.get("outcome") != "kept":
+            continue
+        if item.get("garment_ref", {}).get("category") != category:
+            continue
+        verdicts = {f.get("zone"): f.get("verdict") for f in item.get("zone_feedback") or []}
+        for zone in item.get("kept_despite") or []:
+            direction = FLAW_DIRECTION.get(verdicts.get(zone))
+            if direction:
+                tolerated.setdefault(zone, set()).add(direction)
+    return tolerated
+
+
 def _assess(ease: float, lo: float, hi: float, slack: float) -> str:
     if ease < lo - slack:
         return "too_tight"
@@ -357,6 +390,7 @@ def recommend(
 
     body = ((profile.get("body") or {}).get("measurements")) or {}
     history_offsets, history_n, brand_history_n = _history_offsets(profile, garment)
+    tolerated = _tolerances(profile, garment)
 
     caveats: list[str] = list(version_notes)
     improve_by: list[str] = []
@@ -464,6 +498,9 @@ def recommend(
             zone_penalty = distance / scale
             if is_critical and ease < lo:
                 zone_penalty *= 1.5  # too tight in a zone that cannot be let out
+            missed = "loose" if ease > hi else "tight"
+            if distance and missed in tolerated.get(mapping.zone, ()):
+                zone_penalty *= TOLERATED_WEIGHT  # a flaw this person has kept a garment despite
             w = CRITICAL_WEIGHT if is_critical else 1.0
             penalty += zone_penalty * w
             weight_total += w
