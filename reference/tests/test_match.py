@@ -153,6 +153,78 @@ def test_flat_laid_measurements_are_doubled(mature, shirt):
     assert chest["ease_cm"] > 5  # would be deeply negative if doubling were skipped
 
 
+def _in_inches(measurement):
+    """The same measurement, tolerance included, written in inches."""
+    measurement["value"] /= 2.54
+    if "tolerance" in measurement:
+        measurement["tolerance"] /= 2.54
+    measurement["unit"] = "in"
+
+
+def _answer(profile, garment):
+    report = recommend(profile, garment, disclosure_level="scoped")
+    return (
+        report.recommended_size,
+        report.confidence,
+        [(line.zone, line.assessment, line.ease_cm) for line in report.explanation],
+        report.alternatives,
+    )
+
+
+def test_a_tolerance_is_read_in_the_unit_of_its_measurement(mature, shirt):
+    """The same person and the same shirt, written in inches, get the same answer. A tolerance
+    of 0.59 in used to be read as 0.59 cm, so declaring in inches made a measurement look two
+    and a half times more precise than it was."""
+    import copy
+
+    person = copy.deepcopy(mature)
+    for measurement in person["body"]["measurements"].values():
+        _in_inches(measurement)
+    assert _answer(person, shirt) == _answer(mature, shirt)
+
+    garment = copy.deepcopy(shirt)
+    for size in garment["sizes"]:
+        for measurement in size["finished_measurements"].values():
+            _in_inches(measurement)
+    assert _answer(mature, garment) == _answer(mature, shirt)
+
+
+def test_a_tolerance_left_out_is_not_the_strictest_one(mature, shirt):
+    """A waist written from memory with no tolerance used to count as precise to half a
+    centimetre, stricter than a waist taken with a tape and declared within 1.5. On a 41 that
+    is 2 cm roomier at the waist than the brand intends, the tape got "roomy" and the memory
+    "too loose". A tolerance left out now counts as the wide end of what its source carries."""
+    import copy
+
+    roomy = copy.deepcopy(shirt)
+    for size in roomy["sizes"]:
+        if size["size_label"] == "41":
+            size["finished_measurements"]["waist_width"]["value"] = 58
+
+    def waist(profile):
+        report = recommend(profile, roomy, disclosure_level="explained")
+        assert report.recommended_size == "41"
+        return next(line.assessment for line in report.explanation if line.zone == "waist")
+
+    remembered = copy.deepcopy(mature)
+    measurement = remembered["body"]["measurements"]["waist_circumference"]
+    measurement["source"] = "self_reported"
+    del measurement["tolerance"]
+    assert waist(mature) == "roomy"
+    assert waist(remembered) == "roomy"
+
+
+def test_leaving_tolerances_out_never_makes_an_answer_more_confident(mature, shirt):
+    """Leaving the field out used to pay, because every measurement without a tolerance became
+    the most precise one in the profile."""
+    import copy
+
+    without = copy.deepcopy(mature)
+    for measurement in without["body"]["measurements"].values():
+        measurement.pop("tolerance", None)
+    assert recommend(without, shirt).confidence <= recommend(mature, shirt).confidence
+
+
 def test_a_document_from_another_version_is_refused(mature, shirt):
     # Under a zero major, a minor bump is free to break: 0.2 moves fields 0.1 had
     # elsewhere. Reading it anyway would mean looking for values where they no

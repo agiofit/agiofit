@@ -32,6 +32,20 @@ CRITICAL_WEIGHT = 3.0
 # it are label estimates. One constant for both, because both rest on the same evidence.
 COLD_START_CEILING = 0.40
 
+# The tolerance a body measurement is taken to have when the profile leaves it out: the wide end
+# of what that kind of measurement usually carries, 1.5 cm for an instrument and 3 cm for anything
+# else. A missing tolerance used to count as half a centimetre, the strictest in any profile, so
+# leaving the field out made a measurement look more precise than declaring it honestly. Two
+# numbers chosen, not measured, both taken from the example profile.
+DEFAULT_TOLERANCE_CM = {
+    "tape_measured": 1.5,
+    "scan_3d": 1.5,
+    "self_reported": 3.0,
+    "inferred_from_history": 3.0,
+    "imported_from_retailer": 3.0,
+    "estimated_from_size_labels": 3.0,
+}
+
 
 class UnsupportedSchemaVersion(ValueError):
     """Raised when a document is written to a major version this code cannot read."""
@@ -132,6 +146,18 @@ load_cut_profile = _load
 
 def _cm(value: float, unit: str) -> float:
     return value * IN_TO_CM if unit == "in" else float(value)
+
+
+def _body_tolerance_cm(measurement: dict) -> float:
+    """A body measurement's tolerance, in centimetres.
+
+    A declared tolerance is in the unit of its measurement: reading 0.59 in as 0.59 cm made the
+    same person, written in inches, look two and a half times more precise, and could turn a waist
+    judged roomy into one judged too loose. One left out falls back on DEFAULT_TOLERANCE_CM.
+    """
+    if "tolerance" in measurement:
+        return _cm(measurement["tolerance"], measurement["unit"])
+    return DEFAULT_TOLERANCE_CM.get(measurement.get("source"), max(DEFAULT_TOLERANCE_CM.values()))
 
 
 # --------------------------------------------------------------------------- results
@@ -483,7 +509,9 @@ def recommend(
             shift += history_offsets.get(mapping.zone, 0.0) * mapping.offset_scale
             lo, hi = lo + shift, hi + shift
 
-            meas_tol = float(gm.get("tolerance", prod_tol_cm)) + float(bm.get("tolerance", 0.5))
+            # A garment's tolerance is in the unit of its measurement too.
+            garment_tol = _cm(gm["tolerance"], gm["unit"]) if "tolerance" in gm else prod_tol_cm
+            meas_tol = garment_tol + _body_tolerance_cm(bm)
             slack = meas_tol
             assessment = _assess(ease, lo, hi, slack)
 

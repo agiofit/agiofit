@@ -44,3 +44,7 @@ wrong corrects those zones, and only a return that does not say where moves them
 
 A flaw the person kept a garment despite, in the direction its verdict gives, counts half as much
 the next time sizes are compared, though the report still names it.
+
+A tolerance is read in the unit of its own measurement, and one left out counts as the wide end of
+what its kind of measurement usually carries: leaving it out never makes an answer look surer than
+declaring it.
