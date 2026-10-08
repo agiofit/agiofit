@@ -63,6 +63,13 @@ import in one action. Producers SHOULD populate it for any imported batch.
 SHOULD fill it. An importer that cannot tell the category SHOULD leave it out rather than guess:
 a wrong category would carry a shirt's lesson over to a pair of trousers.
 
+Entries carry no identifier in this version (`05-open-questions.md`), so an entry written twice
+cannot be told apart from two events that look the same. Producers, importers above all, SHOULD
+NOT add an entry the history already holds. An entry that turns out to be wrong is corrected where
+it is, by changing or removing it: adding another records a second event and leaves the wrong one
+counting. The correction of a match report (`03-matching.md`, requirement 3) is a different thing:
+it records what happened with a garment, a new outcome, and is added as one.
+
 ## Identifiers
 
 `profile_id` is pseudonymous. It MUST NOT be derived from a civil identity, an email address, or a

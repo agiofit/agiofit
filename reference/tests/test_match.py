@@ -986,3 +986,95 @@ def test_the_persons_own_word_and_then_the_latest_decide_a_preference(mature, sh
     latest = _bands(_with_preferences(mature, newer), shirt)
     assert _bands(_with_preferences(mature, older, newer), shirt) == latest
     assert _bands(_with_preferences(mature, newer, older), shirt) == latest
+
+
+def test_the_same_outcome_written_twice_counts_once(mature, cold, shirt):
+    """Entries carry no identifier, and one written twice used to count twice: an import run again
+    made the answer surer without telling it anything new, and the new profile's only purchase,
+    imported three times, went from 0.25 to 0.39. Who wrote it, which import brought it, the time
+    zone of its date and the order of its lists do not make it another event."""
+    import copy
+    from datetime import timedelta
+
+    def written_again(profile):
+        again = copy.deepcopy(profile)
+        for item in profile["history"]:
+            twin = copy.deepcopy(item)
+            twin["source"] = "retailer_import"
+            twin["import_ref"] = "the-same-export-again"
+            moment = datetime.fromisoformat(item["occurred_at"].replace("Z", "+00:00"))
+            twin["occurred_at"] = moment.astimezone(timezone(timedelta(hours=2))).isoformat()
+            if "zone_feedback" in twin:
+                twin["zone_feedback"].reverse()
+            again["history"].append(twin)
+        return again
+
+    for profile in (mature, cold):
+        once = recommend(profile, shirt, "scoped").to_json()
+        assert recommend(written_again(profile), shirt, "scoped").to_json() == once
+
+
+def _outcome(when, size, outcome, zone, verdict):
+    """One shirt of this very model, with a single verdict, as the person recorded it."""
+    return {
+        "occurred_at": when,
+        "garment_ref": {
+            "brand": "Sartoria Esempio",
+            "style_id": "OXF-CLASSIC",
+            "category": "shirts",
+            "size_label": size,
+        },
+        "outcome": outcome,
+        "zone_feedback": [{"zone": zone, "verdict": verdict}],
+        "source": "user",
+    }
+
+
+def test_a_recent_outcome_outweighs_an_old_one_on_a_girth(mature, shirt):
+    """A return from five years ago used to weigh as much as last month's: "chest too tight" then
+    and "chest too loose" now cancelled out, and the band stayed where it was. A body moves at the
+    girths, so the recent verdict now decides most of it. Shoulders do not grow, and two opposite
+    verdicts there still cancel. Age alone moves no band: it makes the answer less sure."""
+    import copy
+
+    def bands_after(*history):
+        profile = copy.deepcopy(mature)
+        profile["history"] = list(history)
+        return _bands(profile, shirt)
+
+    old, recent = "2021-09-01T00:00:00Z", "2026-09-01T00:00:00Z"
+    declared = shirt["intended_ease"]
+
+    chest = bands_after(
+        _outcome(old, "40", "returned_too_small", "chest", "too_tight"),
+        _outcome(recent, "42", "returned_too_large", "chest", "too_loose"),
+    )["chest"]
+    assert chest[0] < declared["chest"]["min"]
+
+    shoulders = bands_after(
+        _outcome(old, "40", "returned_too_small", "shoulders", "too_tight"),
+        _outcome(recent, "42", "returned_too_large", "shoulders", "too_loose"),
+    )["shoulders"]
+    assert shoulders == (declared["shoulders"]["min"], declared["shoulders"]["max"])
+
+    aged = copy.deepcopy(mature)
+    for item in aged["history"]:
+        item["occurred_at"] = item["occurred_at"].replace("2026", "2021")
+    assert _bands(aged, shirt) == _bands(mature, shirt)
+    assert recommend(aged, shirt).confidence < recommend(mature, shirt).confidence
+
+
+def test_the_latest_purchase_is_found_by_its_moment_not_its_text(cold, shirt):
+    """A purchase dated 02:00 at UTC+2 happened at midnight in UTC, an hour before one dated
+    01:00Z. Ordered as text it came second, passed for the latest, and the cold start named
+    its size."""
+    import copy
+
+    profile = copy.deepcopy(cold)
+    the_41 = profile["history"][0]
+    the_41["occurred_at"] = "2026-05-05T01:00:00Z"
+    the_40 = copy.deepcopy(the_41)
+    the_40["garment_ref"]["size_label"] = "40"
+    the_40["occurred_at"] = "2026-05-05T02:00:00+02:00"
+    profile["history"] = [the_41, the_40]
+    assert recommend(profile, shirt).recommended_size == "41"

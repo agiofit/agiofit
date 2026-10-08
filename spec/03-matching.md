@@ -55,7 +55,7 @@ is not taken as exact: the reference assumes the wide end of what its kind of me
 carries, 1.5 cm for a tape or a scan and 3 cm for anything else, so that leaving the field out
 never makes a measurement look more precise than the usual one of its kind.
 
-Six details worth stealing:
+Eight details worth stealing:
 
 - **Learned offsets go where the history says the garment was wrong.** An outcome that carries
   `zone_feedback` moves only the zones it names, each in the direction of its verdict, and a
@@ -73,6 +73,11 @@ Six details worth stealing:
   a collar by the same number of centimetres turns a useful correction into a wrong answer, since a
   centimetre at the neck is an entire size.
 - **Same-brand history counts double.** Sizing drift is overwhelmingly brand-specific.
+- **The same outcome counts once.** An entry identical to another in everything but `source` and
+  `import_ref`, with its date read as a moment, is the same event written twice, and counts once.
+- **On a girth, a recent outcome outweighs an old one.** Next to the others, an outcome weighs
+  1.5 / (1.5 + 1 cm for every full year since it happened), the drift the measurements are aged
+  by. On a length, which an adult does not grow out of, every outcome weighs the same.
 - **The same model needs no category.** A history entry without a category still counts when its
   `brand` and `style_id` match the garment's, which makes it the same model; any other entry
   without one is left out rather than guessed.
@@ -117,5 +122,9 @@ its precision. A tolerance wider than the usual one for its source lowers that p
 proportion, so a tape measurement declared within 3 cm counts like a remembered one within 3, and
 a girth loses 1 cm of precision for every full year since it was taken, while the lengths of an
 adult do not. Age changes how far an answer can be trusted, not the judgement of any zone.
+
+The volume of history is judged the same way, zone by zone with critical zones triple, and an
+outcome counts for less on a girth as it ages, as a measurement does. Outcomes of one age keep
+the judgement they gave: only next to a more recent one does an old outcome say less.
 
 A consumer MUST NOT present a confidence from another implementation as comparable to its own.

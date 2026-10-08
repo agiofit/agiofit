@@ -58,3 +58,6 @@ is left out otherwise rather than guessed.
 
 One preference decides each zone, never a sum: the one about the zone before the one about the
 whole garment, the person's own before an inferred one, the latest before an older one.
+
+The same outcome written twice counts once. On a girth a recent outcome outweighs an old one, and a
+history that has aged as a whole leaves the bands where they were and makes the answer less sure.

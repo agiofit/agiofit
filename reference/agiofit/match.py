@@ -63,6 +63,13 @@ SOURCE_WEIGHT = {
 # measurement.
 AGE_DRIFT_CM_PER_YEAR = 1.0
 
+# How far one outcome moves the ease of a zone, in cm, before the cap. On a girth it is also the
+# yardstick for the outcome's age: a lesson of LEARNED_STEP_CM, learnt on a body that may have
+# moved AGE_DRIFT_CM_PER_YEAR every full year since, weighs LEARNED_STEP_CM / (LEARNED_STEP_CM +
+# that drift) next to the others, the curve along which a tape measurement of the usual
+# tolerance loses precision.
+LEARNED_STEP_CM = 1.5
+
 
 class UnsupportedSchemaVersion(ValueError):
     """Raised when a document is written to a major version this code cannot read."""
@@ -183,7 +190,7 @@ def _now() -> datetime:
 
 
 def _years_since(stamp: object, now: datetime) -> int:
-    """Full years, of 365 days, between a measurement's observed_at and the calculation.
+    """Full years, of 365 days, between a date in the profile and the calculation.
 
     A date that cannot be read counts as no age at all: the schema requires the field but
     nothing checks its format, and guessing an age would be inventing one.
@@ -301,6 +308,10 @@ class MatchReport:
 # --------------------------------------------------------------------------- helpers
 
 
+# Where a date that cannot be read stands among the others: before all of them.
+UNREADABLE = datetime.min.replace(tzinfo=timezone.utc)
+
+
 def _when(stamp: object) -> datetime:
     """A timestamp as a moment, for ordering. One that cannot be read comes first.
 
@@ -310,7 +321,7 @@ def _when(stamp: object) -> datetime:
     try:
         moment = datetime.fromisoformat(str(stamp).replace("Z", "+00:00"))
     except ValueError:
-        return datetime.min.replace(tzinfo=timezone.utc)
+        return UNREADABLE
     return moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
 
 
@@ -425,21 +436,63 @@ def _same_category(ref: dict, garment: dict) -> bool:
     )
 
 
-def _history_offsets(profile: dict, garment: dict) -> tuple[dict[str, float], int, int]:
+def _history(profile: dict) -> list[dict]:
+    """The history, with every event in it once.
+
+    Entries carry no identifier, so the same event written twice, by an import run again or by the
+    person and the shop recording one purchase in the same terms, used to count twice, and the
+    answer looked surer for reading the same thing again. Who wrote an entry and which import
+    brought it do not make it another event; a date is compared as a moment, not as text; the
+    order of a list is not part of what it says, and an empty list says no more than a missing
+    one. Entries that differ in anything else stay two: deciding they are one would be guessing.
+    """
+    seen: set[str] = set()
+    events = []
+    for item in profile.get("history", []):
+        event = {key: value for key, value in item.items() if key not in ("source", "import_ref")}
+        moment = _when(item.get("occurred_at"))
+        if moment != UNREADABLE:
+            event["occurred_at"] = moment.timestamp()
+        for name in ("zone_feedback", "kept_despite"):
+            if event.get(name):
+                event[name] = sorted(event[name], key=lambda v: json.dumps(v, sort_keys=True))
+            else:
+                event.pop(name, None)
+        fingerprint = json.dumps(event, sort_keys=True)
+        if fingerprint not in seen:
+            seen.add(fingerprint)
+            events.append(item)
+    return events
+
+
+def _history_offsets(
+    profile: dict, garment: dict, now: datetime
+) -> tuple[dict[str, float], int, int, dict[str, float]]:
     """Learned bias from what actually happened, in cm of ease, zone by zone.
 
-    Returns (offsets_by_zone, total_relevant_outcomes, same_brand_outcomes). Same-brand outcomes
-    count double, because sizing drift is overwhelmingly brand-specific. A returned or exchanged
-    garment that says where it was wrong, through zone_feedback, moves only those zones, each in
-    the direction of its verdict; a verdict on "overall" covers the zones not named one by one.
-    Only an outcome that does not say where moves every zone the same way. A kept garment moves
-    nothing here: what it records is what was accepted, and _tolerances reads that.
+    Returns (offsets_by_zone, total_relevant_outcomes, same_brand_outcomes, evidence_by_zone).
+    Same-brand outcomes count double, because sizing drift is overwhelmingly brand-specific. A
+    returned or exchanged garment that says where it was wrong, through zone_feedback, moves only
+    those zones, each in the direction of its verdict; a verdict on "overall" covers the zones not
+    named one by one. Only an outcome that does not say where moves every zone the same way. A
+    kept garment moves nothing here: what it records is what was accepted, and _tolerances reads
+    that.
+
+    On a girth a recent outcome outweighs an old one. An outcome tells how a garment fitted the
+    body of that day, and a body moves at the girths, so each one weighs LEARNED_STEP_CM /
+    (LEARNED_STEP_CM + AGE_DRIFT_CM_PER_YEAR for every full year since) next to the others. A
+    return from years ago used to weigh as much as last month's, and could cancel it. The lengths
+    of an adult do not move, and there every outcome keeps its weight. Age alone moves no band:
+    outcomes of one age keep the average they had, and what changes is how sure the answer is,
+    through evidence_by_zone, as it is for a measurement.
     """
     brand = garment.get("brand")
     directions = {m.zone: 0.0 for m in ZONE_MAPPINGS}
+    mass = {m.zone: 0.0 for m in ZONE_MAPPINGS}
+    evidence = {m.zone: 0.0 for m in ZONE_MAPPINGS}
     total = 0
     same_brand = 0
-    for item in profile.get("history", []):
+    for item in _history(profile):
         ref = item.get("garment_ref", {})
         if not _same_category(ref, garment):
             continue
@@ -448,24 +501,29 @@ def _history_offsets(profile: dict, garment: dict) -> tuple[dict[str, float], in
         if brand and ref.get("brand") == brand:
             weight = 2.0
             same_brand += 1
+        drift = AGE_DRIFT_CM_PER_YEAR * _years_since(item.get("occurred_at"), now)
         outcome = OUTCOME_DIRECTION.get(item.get("outcome"))
-        if outcome is None:
-            continue
         verdicts = {f.get("zone"): f.get("verdict") for f in item.get("zone_feedback") or []}
-        for zone in directions:
+        for mapping in ZONE_MAPPINGS:
+            zone = mapping.zone
+            recency = 1.0 if mapping.linear else LEARNED_STEP_CM / (LEARNED_STEP_CM + drift)
+            mass[zone] += recency
+            evidence[zone] += weight * recency
+            if outcome is None:
+                continue
             if verdicts:
                 verdict = verdicts.get(zone, verdicts.get("overall"))
-                directions[zone] += weight * VERDICT_DIRECTION.get(verdict, 0.0)
+                directions[zone] += weight * recency * VERDICT_DIRECTION.get(verdict, 0.0)
             else:
-                directions[zone] += weight * outcome
+                directions[zone] += weight * recency * outcome
     if total == 0:
-        return {}, 0, 0
-    # 1.5 cm of ease per net weighted step, capped so history can nudge but not override the body.
+        return {}, 0, 0, {}
+    # LEARNED_STEP_CM per net weighted step, capped so history can nudge but not override the body.
     offsets = {
-        zone: max(-3.0, min(3.0, 1.5 * direction / max(1.0, total)))
+        zone: max(-3.0, min(3.0, LEARNED_STEP_CM * direction / mass[zone]))
         for zone, direction in directions.items()
     }
-    return offsets, total, same_brand
+    return offsets, total, same_brand, evidence
 
 
 def _tolerances(profile: dict, garment: dict) -> dict[str, set[str]]:
@@ -530,7 +588,9 @@ def recommend(
     declared_ease = garment.get("intended_ease") or {}
 
     body = ((profile.get("body") or {}).get("measurements")) or {}
-    history_offsets, history_n, brand_history_n = _history_offsets(profile, garment)
+    history_offsets, history_n, brand_history_n, history_evidence = _history_offsets(
+        profile, garment, now
+    )
     tolerated = _tolerances(profile, garment)
 
     caveats: list[str] = list(version_notes)
@@ -732,8 +792,7 @@ def recommend(
         lines=best_lines,
         best=best_score,
         runner_up=runner_up,
-        history_n=history_n,
-        brand_history_n=brand_history_n,
+        history_evidence=history_evidence,
         fallback_zones=fallback_zones,
         n_sizes=len(scored),
         unreachable_critical_n=len(unreachable_critical),
@@ -885,7 +944,7 @@ def _label_estimate_ceiling(body: dict, lines: list[ExplanationLine]) -> float:
 
 
 def _confidence(
-    *, body, lines, best, runner_up, history_n, brand_history_n, fallback_zones, n_sizes,
+    *, body, lines, best, runner_up, history_evidence, fallback_zones, n_sizes,
     unreachable_critical_n, now
 ) -> float:
     known = [l for l in lines if l.assessment != "unknown"]
@@ -905,19 +964,22 @@ def _confidence(
 
     # How good the measurements behind this answer are: only those this garment uses, critical
     # zones weighing as much as they do when the size is chosen. An average over the whole profile
-    # let a measurement no shirt reads, or a handful of invented ones, move every answer.
+    # let a measurement no shirt reads, or a handful of invented ones, move every answer. The
+    # history behind the answer is weighed the same way, zone by zone, so an old outcome says less
+    # about a girth, as an old measurement does, and as much as ever about a length.
     body_keys = {m.zone: (m.body_key, m.linear) for m in ZONE_MAPPINGS}
-    weighted = total = 0.0
+    weighted = history = total = 0.0
     for line in known:
         key, linear = body_keys[line.zone]
         weight = CRITICAL_WEIGHT if line.critical else 1.0
         weighted += weight * _measurement_quality(body[key], linear, now)
+        history += weight * min(1.0, history_evidence.get(line.zone, 0.0) / 6.0)
         total += weight
     source_quality = weighted / total
+    history_factor = history / total
 
     margin = best - runner_up if n_sizes > 1 else 0.15
     margin_factor = min(1.0, margin / 0.12)
-    history_factor = min(1.0, (history_n + brand_history_n) / 6.0)
     fallback_penalty = min(0.15, 0.03 * fallback_zones)
 
     raw = (
@@ -996,7 +1058,9 @@ def _history_only_size(profile: dict, garment: dict) -> tuple[str | None, float,
     """Guess a size from past outcomes alone, with no body measurements at all.
 
     Only same-brand history is trusted here: a size label from one brand says almost nothing about
-    another brand's label, and pretending otherwise is how size charts got their reputation.
+    another brand's label, and pretending otherwise is how size charts got their reputation. The
+    latest purchase counts most, found by its moment: ordered as text, a date written in another
+    time zone could pass for the latest when it was not.
     """
     labels = _labels_by_size(garment)
     brand = garment.get("brand")
@@ -1009,8 +1073,8 @@ def _history_only_size(profile: dict, garment: dict) -> tuple[str | None, float,
     }
 
     crossed_systems = False
-    candidates: list[tuple[str, str, float]] = []  # (occurred_at, label, weight)
-    for item in profile.get("history", []):
+    candidates: list[tuple[datetime, str, float]] = []  # (occurred_at, label, weight)
+    for item in _history(profile):
         ref = item.get("garment_ref", {})
         if ref.get("brand") != brand or not _same_category(ref, garment):
             continue
@@ -1026,7 +1090,7 @@ def _history_only_size(profile: dict, garment: dict) -> tuple[str | None, float,
         if not 0 <= idx < len(labels):
             continue
         same_style = ref.get("style_id") == garment.get("style_id")
-        candidates.append((item.get("occurred_at", ""), labels[idx], 1.5 if same_style else 1.0))
+        candidates.append((_when(item.get("occurred_at")), labels[idx], 1.5 if same_style else 1.0))
 
     if not candidates:
         notes = ["No usable purchase history for this brand and category."]
