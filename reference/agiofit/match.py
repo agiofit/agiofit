@@ -46,6 +46,23 @@ DEFAULT_TOLERANCE_CM = {
     "estimated_from_size_labels": 3.0,
 }
 
+# How far each kind of measurement is trusted, before its own confidence, its tolerance and its
+# age are taken into account.
+SOURCE_WEIGHT = {
+    "scan_3d": 1.0,
+    "tape_measured": 0.9,
+    "imported_from_retailer": 0.6,
+    "inferred_from_history": 0.5,
+    "self_reported": 0.45,
+    "estimated_from_size_labels": 0.25,
+}
+
+# How much a girth's uncertainty grows for each full year since it was measured. A body changes,
+# and a waist taken three years ago is a less precise answer to how wide the waist is now. The
+# lengths of an adult do not change and are left alone. One centimetre a year is a choice, not a
+# measurement.
+AGE_DRIFT_CM_PER_YEAR = 1.0
+
 
 class UnsupportedSchemaVersion(ValueError):
     """Raised when a document is written to a major version this code cannot read."""
@@ -158,6 +175,46 @@ def _body_tolerance_cm(measurement: dict) -> float:
     if "tolerance" in measurement:
         return _cm(measurement["tolerance"], measurement["unit"])
     return DEFAULT_TOLERANCE_CM.get(measurement.get("source"), max(DEFAULT_TOLERANCE_CM.values()))
+
+
+def _now() -> datetime:
+    """The moment of the calculation, in one place, so that a test can hold the clock still."""
+    return datetime.now(timezone.utc)
+
+
+def _years_since(stamp: object, now: datetime) -> int:
+    """Full years, of 365 days, between a measurement's observed_at and the calculation.
+
+    A date that cannot be read counts as no age at all: the schema requires the field but
+    nothing checks its format, and guessing an age would be inventing one.
+    """
+    try:
+        then = datetime.fromisoformat(str(stamp).replace("Z", "+00:00"))
+    except ValueError:
+        return 0
+    if then.tzinfo is None:
+        then = then.replace(tzinfo=timezone.utc)
+    return max(0, (now - then).days // 365)
+
+
+def _measurement_quality(measurement: dict, linear: bool, now: datetime) -> float:
+    """How far an answer can lean on one body measurement, from 0 to 1.
+
+    Its source and the producer's own confidence say how far the number is trusted. Its
+    tolerance says how precise it is: wider than the usual one for its source, as
+    DEFAULT_TOLERANCE_CM has it, and the measurement counts for less in proportion, so a tape
+    measurement declared within 3 cm counts like a remembered one within 3. Narrower than usual
+    earns nothing extra. A girth also loses AGE_DRIFT_CM_PER_YEAR of precision for every full
+    year since it was taken.
+    """
+    source = measurement.get("source", "self_reported")
+    trust = SOURCE_WEIGHT.get(source, 0.4) * float(measurement.get("confidence", 0.5))
+    usual = DEFAULT_TOLERANCE_CM.get(source, max(DEFAULT_TOLERANCE_CM.values()))
+    uncertainty = _body_tolerance_cm(measurement)
+    if not linear:
+        uncertainty += AGE_DRIFT_CM_PER_YEAR * _years_since(measurement.get("observed_at"), now)
+    precision = min(1.0, usual / uncertainty) if uncertainty > 0 else 1.0
+    return trust * precision
 
 
 # --------------------------------------------------------------------------- results
@@ -401,8 +458,16 @@ def _assess(ease: float, lo: float, hi: float, slack: float) -> str:
 
 
 def recommend(
-    profile: dict, garment: dict, disclosure_level: str | None = None
+    profile: dict,
+    garment: dict,
+    disclosure_level: str | None = None,
+    now: datetime | None = None,
 ) -> MatchReport:
+    # How old a measurement is depends on the day of the calculation. A caller that needs the
+    # same answer on any day, a test or a demo, passes the day.
+    now = now or _now()
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=timezone.utc)
     disclosure_level = _disclosure_level(profile, disclosure_level)
     withheld_zones = _withheld_zones(profile)
     category = garment.get("category", "")
@@ -563,7 +628,7 @@ def recommend(
     if rejected and not all_returned:
         scored = [t for t in scored if t[1] not in returned_labels]
 
-    computed_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    computed_at = now.isoformat(timespec="seconds")
     based_on = {
         "body_signals": len(body),
         "preference_signals": len(profile.get("preferences", [])),
@@ -622,6 +687,7 @@ def recommend(
         fallback_zones=fallback_zones,
         n_sizes=len(scored),
         unreachable_critical_n=len(unreachable_critical),
+        now=now,
     )
 
     ceiling = _label_estimate_ceiling(body, best_lines)
@@ -770,7 +836,7 @@ def _label_estimate_ceiling(body: dict, lines: list[ExplanationLine]) -> float:
 
 def _confidence(
     *, body, lines, best, runner_up, history_n, brand_history_n, fallback_zones, n_sizes,
-    unreachable_critical_n
+    unreachable_critical_n, now
 ) -> float:
     known = [l for l in lines if l.assessment != "unknown"]
     if not known:
@@ -787,20 +853,17 @@ def _confidence(
     # a missing ease band falls back and pays a penalty instead of passing unnoticed.
     critical_coverage = len(critical_known) / critical_total if critical_total else 0.0
 
-    source_quality = 0.0
-    if body:
-        weights = {
-            "scan_3d": 1.0,
-            "tape_measured": 0.9,
-            "imported_from_retailer": 0.6,
-            "inferred_from_history": 0.5,
-            "self_reported": 0.45,
-            "estimated_from_size_labels": 0.25,
-        }
-        source_quality = sum(
-            weights.get(m.get("source", "self_reported"), 0.4) * float(m.get("confidence", 0.5))
-            for m in body.values()
-        ) / len(body)
+    # How good the measurements behind this answer are: only those this garment uses, critical
+    # zones weighing as much as they do when the size is chosen. An average over the whole profile
+    # let a measurement no shirt reads, or a handful of invented ones, move every answer.
+    body_keys = {m.zone: (m.body_key, m.linear) for m in ZONE_MAPPINGS}
+    weighted = total = 0.0
+    for line in known:
+        key, linear = body_keys[line.zone]
+        weight = CRITICAL_WEIGHT if line.critical else 1.0
+        weighted += weight * _measurement_quality(body[key], linear, now)
+        total += weight
+    source_quality = weighted / total
 
     margin = best - runner_up if n_sizes > 1 else 0.15
     margin_factor = min(1.0, margin / 0.12)

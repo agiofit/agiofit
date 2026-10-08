@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -29,6 +30,16 @@ def cold():
 @pytest.fixture
 def shirt():
     return load_cut_profile(EXAMPLES / "cut-shirt.json")
+
+
+# The day every test computes on. A measurement's age changes the answer, and a test must not
+# start failing because a year went by.
+TODAY = datetime(2026, 10, 8, tzinfo=timezone.utc)
+
+
+@pytest.fixture(autouse=True)
+def fixed_clock(monkeypatch):
+    monkeypatch.setattr("agiofit.match._now", lambda: TODAY)
 
 
 # --------------------------------------------------------------------- schema conformance
@@ -626,6 +637,68 @@ def test_a_label_estimate_the_garment_does_not_use_costs_nothing_here(mature, sh
     report = recommend(mature, shirt)
 
     assert not any("estimated from size labels" in c for c in report.caveats)
+
+
+def test_a_measurement_the_garment_does_not_use_does_not_move_the_confidence(mature, shirt):
+    """The quality of the measurements used to be averaged over the whole profile: five invented
+    measurements declared as 3D scans lifted the shirt's confidence, and an inseam estimated from
+    size labels, which no shirt reads, pulled it down."""
+    import copy
+
+    base = recommend(mature, shirt).confidence
+
+    padded = copy.deepcopy(mature)
+    for name in ("x_a", "x_b", "x_c", "x_d", "x_e"):
+        padded["body"]["measurements"][name] = {
+            "value": 50,
+            "unit": "cm",
+            "source": "scan_3d",
+            "confidence": 1.0,
+            "observed_at": "2026-10-01T00:00:00Z",
+            "tolerance": 0.5,
+        }
+    assert recommend(padded, shirt).confidence == base
+
+    trimmed = copy.deepcopy(mature)
+    del trimmed["body"]["measurements"]["inseam"]
+    assert recommend(trimmed, shirt).confidence == base
+
+
+def test_a_measurement_counts_for_how_precise_it_is_not_how_it_was_taken(mature, shirt):
+    """A tolerance wider than usual for its source used to leave the confidence where it was. A
+    chest taken with a tape but declared within 3 cm now counts like one remembered within 3."""
+    import copy
+
+    def with_chest(source, tolerance):
+        profile = copy.deepcopy(mature)
+        profile["body"]["measurements"]["chest_circumference"].update(
+            source=source, tolerance=tolerance
+        )
+        return recommend(profile, shirt).confidence
+
+    assert with_chest("tape_measured", 3.0) < with_chest("tape_measured", 1.0)
+    assert with_chest("tape_measured", 3.0) == with_chest("self_reported", 3.0)
+
+
+def test_an_old_girth_counts_for_less_than_a_fresh_one(mature, shirt):
+    """Measurements from ten years ago used to count exactly like this year's. A girth now loses
+    precision with every full year, while the lengths of an adult keep their value, and the day
+    of the calculation can be given: five years on, the same profile is less sure."""
+    import copy
+
+    base = recommend(mature, shirt).confidence
+
+    def dated(keys, when):
+        profile = copy.deepcopy(mature)
+        for key in keys:
+            profile["body"]["measurements"][key]["observed_at"] = when
+        return recommend(profile, shirt).confidence
+
+    girths = ("chest_circumference", "waist_circumference", "neck_circumference")
+    assert dated(girths, "2021-09-01T00:00:00Z") < dated(girths, "2025-09-01T00:00:00Z") < base
+    assert dated(("shoulder_width", "arm_length"), "2016-01-01T00:00:00Z") == base
+    later = datetime(2031, 10, 8, tzinfo=timezone.utc)
+    assert recommend(mature, shirt, now=later).confidence < base
 
 
 def test_an_unknown_disclosure_level_fails_closed(mature, shirt):

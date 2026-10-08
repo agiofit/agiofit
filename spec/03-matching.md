@@ -53,7 +53,7 @@ out.
 Every tolerance is read in the unit of its own measurement. A body measurement that declares none
 is not taken as exact: the reference assumes the wide end of what its kind of measurement usually
 carries, 1.5 cm for a tape or a scan and 3 cm for anything else, so that leaving the field out
-never makes an answer look more precise than declaring it would.
+never makes a measurement look more precise than the usual one of its kind.
 
 Four details worth stealing:
 
@@ -102,5 +102,13 @@ Critical zone coverage counts every critical zone the consumer knows about, incl
 could not reach: a zone with no mapping, and a zone whose measurement the garment never published,
 both stay in the denominator. Leaving them out is what lets a document score better for saying
 less, and requirement 7 exists to forbid it.
+
+The quality of the measurements is judged on the ones this garment uses, critical zones weighing
+three times as much, as they do when a size is chosen: a measurement no garment of this kind reads
+cannot raise or lower the answer. Each counts for its source, the producer's own confidence and
+its precision. A tolerance wider than the usual one for its source lowers that precision in
+proportion, so a tape measurement declared within 3 cm counts like a remembered one within 3, and
+a girth loses 1 cm of precision for every full year since it was taken, while the lengths of an
+adult do not. Age changes how far an answer can be trusted, not the judgement of any zone.
 
 A consumer MUST NOT present a confidence from another implementation as comparable to its own.

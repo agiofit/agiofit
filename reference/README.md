@@ -46,5 +46,9 @@ A flaw the person kept a garment despite, in the direction its verdict gives, co
 the next time sizes are compared, though the report still names it.
 
 A tolerance is read in the unit of its own measurement, and one left out counts as the wide end of
-what its kind of measurement usually carries: leaving it out never makes an answer look surer than
-declaring it.
+what its kind of measurement usually carries, so leaving it out never makes a measurement look more
+precise than the usual one of its kind.
+
+Only the measurements a garment uses count towards how sure an answer is, critical zones triple.
+One declared less precise than usual for its source counts for less, and a girth loses precision
+as it ages, so the same profile is less sure years later.
