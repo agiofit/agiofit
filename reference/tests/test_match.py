@@ -931,3 +931,58 @@ def test_a_kept_flaw_teaches_only_the_direction_it_was_kept_in(mature, shirt):
             if verdict["zone"] in (item.get("kept_despite") or []):
                 verdict["verdict"] = "snug"
     assert recommend(other_way, slim).recommended_size == "40"
+
+
+def _with_preferences(profile, *preferences):
+    """The profile with its preferences replaced by shirt ones, each (zone, preference, source,
+    updated_at), at full strength and confidence."""
+    import copy
+
+    profile = copy.deepcopy(profile)
+    profile["preferences"] = [
+        {
+            "category": "shirts",
+            "zone": zone,
+            "preference": preference,
+            "strength": 1.0,
+            "source": source,
+            "confidence": 1.0,
+            "updated_at": when,
+        }
+        for zone, preference, source, when in preferences
+    ]
+    return profile
+
+
+RELAXED = ("overall", "relaxed", "declared", "2026-09-01T00:00:00Z")
+
+
+def test_a_preference_written_twice_counts_once(mature, shirt):
+    """Preferences used to be added together: a profile imported twice asked for 4 cm more ease
+    at the chest with every copy of "relaxed"."""
+    once = _bands(_with_preferences(mature, RELAXED), shirt)
+    assert _bands(_with_preferences(mature, RELAXED, RELAXED, RELAXED), shirt) == once
+
+
+def test_a_preference_about_a_zone_wins_over_one_about_the_whole_garment(mature, shirt):
+    """A "relaxed overall" with "regular shoulders" used to widen the shoulders as well, because
+    the regular preference added nothing instead of replacing the general one."""
+    regular_shoulders = ("shoulders", "regular", "declared", "2026-09-01T00:00:00Z")
+    both = _bands(_with_preferences(mature, RELAXED, regular_shoulders), shirt)
+    assert both["shoulders"] == _bands(_with_preferences(mature), shirt)["shoulders"]
+    assert both["chest"] == _bands(_with_preferences(mature, RELAXED), shirt)["chest"]
+
+
+def test_the_persons_own_word_and_then_the_latest_decide_a_preference(mature, shirt):
+    """A declared "relaxed" and an inferred "fitted" used to cancel out without anyone being
+    told, and a newer "regular" could not undo an older "relaxed"."""
+    relaxed = _bands(_with_preferences(mature, RELAXED), shirt)
+    inferred = ("overall", "fitted", "inferred_from_history", "2026-10-01T00:00:00Z")
+    assert _bands(_with_preferences(mature, RELAXED, inferred), shirt) == relaxed
+    assert _bands(_with_preferences(mature, inferred, RELAXED), shirt) == relaxed
+
+    older = ("overall", "relaxed", "declared", "2025-01-01T00:00:00Z")
+    newer = ("overall", "regular", "declared", "2026-01-01T00:00:00Z")
+    latest = _bands(_with_preferences(mature, newer), shirt)
+    assert _bands(_with_preferences(mature, older, newer), shirt) == latest
+    assert _bands(_with_preferences(mature, newer, older), shirt) == latest

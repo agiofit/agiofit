@@ -301,17 +301,48 @@ class MatchReport:
 # --------------------------------------------------------------------------- helpers
 
 
+def _when(stamp: object) -> datetime:
+    """A timestamp as a moment, for ordering. One that cannot be read comes first.
+
+    Dates are compared as moments, not as text: 2026-05-05T02:00:00+02:00 is midnight in UTC
+    and comes before 2026-05-05T01:00:00Z, which text ordering gets the wrong way round.
+    """
+    try:
+        moment = datetime.fromisoformat(str(stamp).replace("Z", "+00:00"))
+    except ValueError:
+        return datetime.min.replace(tzinfo=timezone.utc)
+    return moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
+
+
 def _preference_shift(profile: dict, category: str, zone: str, linear: bool) -> float:
-    shift = 0.0
-    for pref in profile.get("preferences", []):
-        if pref.get("category") != category:
-            continue
-        if pref.get("zone") not in (zone, "overall"):
-            continue
-        weight = float(pref.get("strength", 1.0)) * float(pref.get("confidence", 0.7))
-        base = PREFERENCE_SHIFT.get(pref.get("preference", "regular"), 0.0)
-        shift += base * weight * (0.25 if linear else 1.0)
-    return shift
+    """How far the person's stated wishes move the ease band of one zone.
+
+    One preference decides each zone. One about the zone itself wins over one about the
+    garment overall; between two at the same level, what the person declared wins over what a
+    system inferred, and then the more recent wins. Preferences used to be added together, so
+    a repeated import counted twice, "relaxed overall" widened shoulders the person had asked
+    to keep regular, and a declared wish and an inferred one cancelled out without anyone
+    being told.
+    """
+    candidates = [
+        pref
+        for pref in profile.get("preferences", [])
+        if pref.get("category") == category and pref.get("zone") in (zone, "overall")
+    ]
+    if not candidates:
+        return 0.0
+    # Among equals, the one written last: max keeps the first of its ties, so read backwards.
+    pref = max(
+        reversed(candidates),
+        key=lambda p: (
+            p.get("zone") == zone,
+            p.get("source") == "declared",
+            _when(p.get("updated_at")),
+        ),
+    )
+    weight = float(pref.get("strength", 1.0)) * float(pref.get("confidence", 0.7))
+    base = PREFERENCE_SHIFT.get(pref.get("preference", "regular"), 0.0)
+    return base * weight * (0.25 if linear else 1.0)
 
 
 def _usable_stretch(garment: dict) -> float:

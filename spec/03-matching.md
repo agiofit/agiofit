@@ -55,7 +55,7 @@ is not taken as exact: the reference assumes the wide end of what its kind of me
 carries, 1.5 cm for a tape or a scan and 3 cm for anything else, so that leaving the field out
 never makes a measurement look more precise than the usual one of its kind.
 
-Five details worth stealing:
+Six details worth stealing:
 
 - **Learned offsets go where the history says the garment was wrong.** An outcome that carries
   `zone_feedback` moves only the zones it names, each in the direction of its verdict, and a
@@ -76,6 +76,10 @@ Five details worth stealing:
 - **The same model needs no category.** A history entry without a category still counts when its
   `brand` and `style_id` match the garment's, which makes it the same model; any other entry
   without one is left out rather than guessed.
+- **One preference decides each zone.** A preference about the zone itself wins over one about
+  the garment overall; between two at the same level the declared one wins over the inferred
+  one, and then the more recent. Preferences are never added together, so a repeated import
+  counts once.
 
 ## Cold start
 

@@ -38,6 +38,9 @@ anything tight at the neck" are not the same statement and MUST NOT be encoded i
 Preferences MAY be inferred from history, in which case `source` is `inferred_from_history` and the
 producer SHOULD make the inference visible to the person, who can then correct it.
 
+Where a declared preference and an inferred one disagree, consumers SHOULD follow the declared
+one: an inference is a guess at what the person wants, the declaration is what they said.
+
 ## Layer 3 — History
 
 Outcomes, not intentions: what was kept, what was returned, and why.

@@ -55,3 +55,6 @@ as it ages, so the same profile is less sure years later.
 
 A past purchase without a category still counts when it is the same model of the same brand, and
 is left out otherwise rather than guessed.
+
+One preference decides each zone, never a sum: the one about the zone before the one about the
+whole garment, the person's own before an inferred one, the latest before an older one.
