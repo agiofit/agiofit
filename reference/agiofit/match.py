@@ -373,6 +373,27 @@ FLAW_DIRECTION = {"too_tight": "tight", "snug": "tight", "roomy": "loose", "too_
 TOLERATED_WEIGHT = 0.5
 
 
+def _same_category(ref: dict, garment: dict) -> bool:
+    """Whether a past garment is the same kind of garment as this one.
+
+    An entry without a category used to be dropped, and every lesson it carried with it: an
+    importer that could not map a shop's categories onto the schema's, and honestly left the
+    field out, erased the whole history. Without a category an entry still counts when it is
+    the same model, the same style_id of the same brand, which the specification defines as the
+    same design in the same cut. Any other entry without one stays out: guessing what kind of
+    garment it was would be inventing it.
+    """
+    category = ref.get("category")
+    if category is not None:
+        return category == garment.get("category")
+    return (
+        bool(ref.get("brand"))
+        and bool(ref.get("style_id"))
+        and ref.get("brand") == garment.get("brand")
+        and ref.get("style_id") == garment.get("style_id")
+    )
+
+
 def _history_offsets(profile: dict, garment: dict) -> tuple[dict[str, float], int, int]:
     """Learned bias from what actually happened, in cm of ease, zone by zone.
 
@@ -383,14 +404,13 @@ def _history_offsets(profile: dict, garment: dict) -> tuple[dict[str, float], in
     Only an outcome that does not say where moves every zone the same way. A kept garment moves
     nothing here: what it records is what was accepted, and _tolerances reads that.
     """
-    category = garment.get("category")
     brand = garment.get("brand")
     directions = {m.zone: 0.0 for m in ZONE_MAPPINGS}
     total = 0
     same_brand = 0
     for item in profile.get("history", []):
         ref = item.get("garment_ref", {})
-        if ref.get("category") != category:
+        if not _same_category(ref, garment):
             continue
         weight = 1.0
         total += 1
@@ -427,12 +447,11 @@ def _tolerances(profile: dict, garment: dict) -> dict[str, set[str]]:
     The compromise is the person's, not the brand's, so any brand counts. And it is a set: the
     same garment imported twice teaches it once.
     """
-    category = garment.get("category")
     tolerated: dict[str, set[str]] = {}
     for item in profile.get("history", []):
         if item.get("outcome") != "kept":
             continue
-        if item.get("garment_ref", {}).get("category") != category:
+        if not _same_category(item.get("garment_ref", {}), garment):
             continue
         verdicts = {f.get("zone"): f.get("verdict") for f in item.get("zone_feedback") or []}
         for zone in item.get("kept_despite") or []:
@@ -950,7 +969,6 @@ def _history_only_size(profile: dict, garment: dict) -> tuple[str | None, float,
     """
     labels = _labels_by_size(garment)
     brand = garment.get("brand")
-    category = garment.get("category")
     step = {
         "kept": 0,
         "returned_too_small": 1,
@@ -963,7 +981,7 @@ def _history_only_size(profile: dict, garment: dict) -> tuple[str | None, float,
     candidates: list[tuple[str, str, float]] = []  # (occurred_at, label, weight)
     for item in profile.get("history", []):
         ref = item.get("garment_ref", {})
-        if ref.get("brand") != brand or ref.get("category") != category:
+        if ref.get("brand") != brand or not _same_category(ref, garment):
             continue
         if not _same_size_system(ref, garment):
             crossed_systems = True

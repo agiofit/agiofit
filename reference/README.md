@@ -52,3 +52,6 @@ precise than the usual one of its kind.
 Only the measurements a garment uses count towards how sure an answer is, critical zones triple.
 One declared less precise than usual for its source counts for less, and a girth loses precision
 as it ages, so the same profile is less sure years later.
+
+A past purchase without a category still counts when it is the same model of the same brand, and
+is left out otherwise rather than guessed.

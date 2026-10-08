@@ -55,7 +55,7 @@ is not taken as exact: the reference assumes the wide end of what its kind of me
 carries, 1.5 cm for a tape or a scan and 3 cm for anything else, so that leaving the field out
 never makes a measurement look more precise than the usual one of its kind.
 
-Four details worth stealing:
+Five details worth stealing:
 
 - **Learned offsets go where the history says the garment was wrong.** An outcome that carries
   `zone_feedback` moves only the zones it names, each in the direction of its verdict, and a
@@ -73,6 +73,9 @@ Four details worth stealing:
   a collar by the same number of centimetres turns a useful correction into a wrong answer, since a
   centimetre at the neck is an entire size.
 - **Same-brand history counts double.** Sizing drift is overwhelmingly brand-specific.
+- **The same model needs no category.** A history entry without a category still counts when its
+  `brand` and `style_id` match the garment's, which makes it the same model; any other entry
+  without one is left out rather than guessed.
 
 ## Cold start
 

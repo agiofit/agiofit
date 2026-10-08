@@ -56,6 +56,10 @@ between a system that annoys people and one they trust.
 `import_ref` groups everything that arrived from one source, so a person can delete an entire
 import in one action. Producers SHOULD populate it for any imported batch.
 
+`garment_ref.category` is what lets one garment teach anything about another, and producers
+SHOULD fill it. An importer that cannot tell the category SHOULD leave it out rather than guess:
+a wrong category would carry a shirt's lesson over to a pair of trousers.
+
 ## Identifiers
 
 `profile_id` is pseudonymous. It MUST NOT be derived from a civil identity, an email address, or a

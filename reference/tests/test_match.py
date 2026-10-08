@@ -338,6 +338,47 @@ def test_an_undeclared_size_system_is_not_treated_as_a_conflict(cold, shirt):
     assert recommend(profile, shirt).to_json()["recommended_size"] == expected
 
 
+def test_a_past_purchase_of_the_same_model_counts_without_a_category(mature, cold, shirt):
+    """An importer that cannot map a shop's categories onto ours leaves the field out, and every
+    entry without it used to be dropped: the new profile, whose only purchase is a 41 of this
+    very shirt, got no size at all. Brand and style_id together identify a model, so a past
+    purchase of the same model needs no category to count."""
+    import copy
+
+    def uncategorised(profile):
+        profile = copy.deepcopy(profile)
+        for item in profile["history"]:
+            ref = item["garment_ref"]
+            if (ref.get("brand"), ref.get("style_id")) == (shirt["brand"], shirt["style_id"]):
+                del ref["category"]
+        return profile
+
+    for profile in (mature, cold):
+        before = recommend(profile, shirt)
+        after = recommend(uncategorised(profile), shirt)
+        assert (after.recommended_size, after.confidence, after.based_on) == (
+            before.recommended_size,
+            before.confidence,
+            before.based_on,
+        )
+
+
+def test_a_past_purchase_of_another_model_without_a_category_stays_out(mature, shirt):
+    """Without a category, a purchase of a different model could have been anything. It counts
+    as if it were not there, rather than as a guess."""
+    import copy
+
+    uncategorised = copy.deepcopy(mature)
+    for item in uncategorised["history"]:
+        if item["garment_ref"]["style_id"] == "POPLIN-SLIM":
+            del item["garment_ref"]["category"]
+    removed = copy.deepcopy(mature)
+    removed["history"] = [
+        item for item in removed["history"] if item["garment_ref"]["style_id"] != "POPLIN-SLIM"
+    ]
+    assert recommend(uncategorised, shirt).confidence == recommend(removed, shirt).confidence
+
+
 def test_a_reversed_ease_band_falls_back_and_says_so(mature, shirt):
     # min above max describes an interval no value can satisfy. Swapping the two
     # would be guessing at an intention; treating the band as absent is the same
