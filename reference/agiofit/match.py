@@ -365,6 +365,21 @@ def _usable_stretch(garment: dict) -> float:
     return STRETCH_CLASS_FRACTION.get(fabric.get("stretch_class", "none"), 0.0)
 
 
+def _label_key(label: object) -> str | None:
+    """A size label as a person reads it, to line a past purchase up against a garment's sizes.
+
+    The history and the garment are written by different people, and labels compared letter by
+    letter missed for a space: a 41 sent back and recorded as "41 " was recommended again, and
+    a purchase written that way taught the cold start nothing. Spaces at the ends, repeated
+    spaces and capitals do not make another label. Anything else does: "IT 41" is not "41",
+    because reading it so would take knowing that IT is a size system, which is the size-chart
+    knowledge this model does without.
+    """
+    if label is None:
+        return None
+    return " ".join(str(label).split()).casefold()
+
+
 RETURNED_FOR_SIZE = {
     "returned_too_small",
     "returned_too_large",
@@ -380,7 +395,8 @@ def _sizes_already_returned(profile: dict, garment: dict) -> set[str]:
     Keyed on cut_profile_id and nothing else: a brand or style match means a
     similar garment, which is a weaker claim and already handled by the learned
     offset. "kept" and "returned_other" are left out because neither says the
-    size was wrong.
+    size was wrong. The labels come back as _label_key reads them, and the garment's
+    are read the same way before they are compared.
     """
     cut_id = garment.get("cut_profile_id")
     if not cut_id:
@@ -391,7 +407,7 @@ def _sizes_already_returned(profile: dict, garment: dict) -> set[str]:
         if ref.get("cut_profile_id") != cut_id:
             continue
         if entry.get("outcome") in RETURNED_FOR_SIZE:
-            labels.add(ref.get("size_label"))
+            labels.add(_label_key(ref.get("size_label")))
     return {l for l in labels if l}
 
 
@@ -442,9 +458,10 @@ def _history(profile: dict) -> list[dict]:
     Entries carry no identifier, so the same event written twice, by an import run again or by the
     person and the shop recording one purchase in the same terms, used to count twice, and the
     answer looked surer for reading the same thing again. Who wrote an entry and which import
-    brought it do not make it another event; a date is compared as a moment, not as text; the
-    order of a list is not part of what it says, and an empty list says no more than a missing
-    one. Entries that differ in anything else stay two: deciding they are one would be guessing.
+    brought it do not make it another event; a date is compared as a moment, not as text, and a
+    size label as _label_key reads it; the order of a list is not part of what it says, and an
+    empty list says no more than a missing one. Entries that differ in anything else stay two:
+    deciding they are one would be guessing.
     """
     seen: set[str] = set()
     events = []
@@ -453,6 +470,9 @@ def _history(profile: dict) -> list[dict]:
         moment = _when(item.get("occurred_at"))
         if moment != UNREADABLE:
             event["occurred_at"] = moment.timestamp()
+        ref = event.get("garment_ref")
+        if isinstance(ref, dict) and "size_label" in ref:
+            event["garment_ref"] = dict(ref, size_label=_label_key(ref["size_label"]))
         for name in ("zone_feedback", "kept_despite"):
             if event.get(name):
                 event[name] = sorted(event[name], key=lambda v: json.dumps(v, sort_keys=True))
@@ -733,10 +753,10 @@ def recommend(
     # correctability the specification promises purely nominal. The entry does not
     # outweigh the calculation, it removes one option from it.
     returned_labels = _sizes_already_returned(profile, garment)
-    rejected = [t for t in scored if t[1] in returned_labels]
+    rejected = [t for t in scored if _label_key(t[1]) in returned_labels]
     all_returned = bool(rejected) and len(rejected) == len(scored)
     if rejected and not all_returned:
-        scored = [t for t in scored if t[1] not in returned_labels]
+        scored = [t for t in scored if _label_key(t[1]) not in returned_labels]
 
     computed_at = now.isoformat(timespec="seconds")
     based_on = {
@@ -775,8 +795,10 @@ def recommend(
                 [nothing_to_compare]
                 + (["Answer derived from past purchases alone."] if label else [])
                 # Explanation is withheld at result_only, so a reason that lives only
-                # there is a reason the reader never gets.
-                + [n for n in notes if "size system" in n]
+                # there is a reason the reader never gets. With no size named, the notes
+                # say why the history could not be used; with one named, they count the
+                # purchases behind it, and that count stays out of a result_only answer.
+                + ([] if label else notes)
                 + version_notes
             ),
             improve_by=_improvements(body, profile, garment),
@@ -1063,6 +1085,10 @@ def _history_only_size(profile: dict, garment: dict) -> tuple[str | None, float,
     time zone could pass for the latest when it was not.
     """
     labels = _labels_by_size(garment)
+    # Where each label stands, as _label_key reads it: the first, if two read alike.
+    positions: dict[str | None, int] = {}
+    for index, label in enumerate(labels):
+        positions.setdefault(_label_key(label), index)
     brand = garment.get("brand")
     step = {
         "kept": 0,
@@ -1081,12 +1107,13 @@ def _history_only_size(profile: dict, garment: dict) -> tuple[str | None, float,
         if not _same_size_system(ref, garment):
             crossed_systems = True
             continue
-        if ref.get("size_label") not in labels:
+        position = positions.get(_label_key(ref.get("size_label")))
+        if position is None:
             continue
         delta = step.get(item.get("outcome"))
         if delta is None:
             continue
-        idx = labels.index(ref["size_label"]) + delta
+        idx = position + delta
         if not 0 <= idx < len(labels):
             continue
         same_style = ref.get("style_id") == garment.get("style_id")

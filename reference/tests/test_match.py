@@ -1078,3 +1078,64 @@ def test_the_latest_purchase_is_found_by_its_moment_not_its_text(cold, shirt):
     the_40["occurred_at"] = "2026-05-05T02:00:00+02:00"
     profile["history"] = [the_41, the_40]
     assert recommend(profile, shirt).recommended_size == "41"
+
+
+def test_a_size_returned_under_another_spelling_is_not_recommended_again(mature, shirt):
+    """The history and the garment are written by different people. A 41 sent back and recorded
+    as "41 ", with a space at the end, used to be recommended again without a word, because the
+    labels were compared letter by letter. Spaces do not make another label."""
+    import copy
+
+    first = recommend(mature, shirt).to_json()["recommended_size"]
+    for spelling in (first + " ", "  " + first + "  "):
+        profile = copy.deepcopy(mature)
+        profile["history"].append(_returned(shirt, spelling))
+        out = recommend(profile, shirt, disclosure_level="explained").to_json()
+
+        assert out["recommended_size"] != first
+        assert any(
+            alt["size_label"] == first and alt.get("note") for alt in out["alternatives"]
+        )
+
+
+def test_a_past_purchase_written_with_other_spaces_or_capitals_still_counts(mature, cold, shirt):
+    """A kept 41 recorded as " 41 " used to leave the new profile with no size at all, a kept "m "
+    taught nothing about a garment labelled M, and a return written again by hand with a space
+    counted as a second event. Spaces and capitals do not make another label."""
+    import copy
+
+    def relabelled(profile, label):
+        profile = copy.deepcopy(profile)
+        profile["history"][0]["garment_ref"]["size_label"] = label
+        return profile
+
+    assert recommend(relabelled(cold, " 41 "), shirt).to_json() == recommend(cold, shirt).to_json()
+
+    lettered = copy.deepcopy(shirt)
+    for size, letter in zip(lettered["sizes"], ("S", "M", "L", "XL")):
+        size["size_label"] = letter
+    assert recommend(relabelled(cold, "m "), lettered).recommended_size == "M"
+
+    twice = copy.deepcopy(mature)
+    again = copy.deepcopy(mature["history"][0])
+    again["garment_ref"]["size_label"] += " "
+    again["source"] = "user"
+    again.pop("import_ref")
+    twice["history"].append(again)
+    once = recommend(mature, shirt, "scoped").to_json()
+    assert recommend(twice, shirt, "scoped").to_json() == once
+
+
+def test_a_size_system_inside_a_label_is_not_guessed(cold, shirt):
+    """A label written "IT 41" could be read as the 41 only by knowing what IT means, which is
+    the size-chart knowledge this model does without. It is not guessed. With no size named,
+    the reason now reaches a result_only answer too, where the person can see that the history
+    was not used."""
+    import copy
+
+    profile = copy.deepcopy(cold)
+    profile["history"][0]["garment_ref"]["size_label"] = "IT 41"
+    out = recommend(profile, shirt, disclosure_level="result_only").to_json()
+
+    assert out["recommended_size"] is None
+    assert any("No usable purchase history" in c for c in out["caveats"])

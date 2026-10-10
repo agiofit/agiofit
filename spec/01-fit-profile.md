@@ -63,6 +63,10 @@ import in one action. Producers SHOULD populate it for any imported batch.
 SHOULD fill it. An importer that cannot tell the category SHOULD leave it out rather than guess:
 a wrong category would carry a shirt's lesson over to a pair of trousers.
 
+`garment_ref.size_label` is how a past purchase is lined up against the sizes of a garment, and
+producers SHOULD write the size alone, as its size system names it, with the system in
+`size_system`: `41` with `IT`, not `IT 41`.
+
 Entries carry no identifier in this version (`05-open-questions.md`), so an entry written twice
 cannot be told apart from two events that look the same. Producers, importers above all, SHOULD
 NOT add an entry the history already holds. An entry that turns out to be wrong is corrected where

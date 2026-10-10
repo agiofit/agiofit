@@ -61,3 +61,6 @@ whole garment, the person's own before an inferred one, the latest before an old
 
 The same outcome written twice counts once. On a girth a recent outcome outweighs an old one, and a
 history that has aged as a whole leaves the bands where they were and makes the answer less sure.
+
+A size label is read the way a person reads it: spaces and capitals do not make another label,
+and a size system written inside one is not guessed.
