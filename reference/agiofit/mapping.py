@@ -15,10 +15,11 @@ class ZoneMapping:
     body_key: str
     doubles_when_flat_laid: bool
     linear: bool  # linear zones (shoulder, sleeve) tolerate far less ease than girths
-    offset_scale: float  # how much of a learned brand offset applies here
+    offset_scale: float  # how much of any shift applies here, learned or stated
 
     # A brand that "runs small" runs small in the torso. Applying the same centimetre shift to a
-    # collar, where 1 cm is a whole size, turns a useful correction into a wrong answer.
+    # collar, where 1 cm is a whole size, turns a useful correction into a wrong answer. A stated
+    # preference is no different: a relaxed collar is about a size larger, not four.
 
 
 ZONE_MAPPINGS: tuple[ZoneMapping, ...] = (
@@ -73,8 +74,9 @@ GENERIC_EASE: dict[bool, tuple[float, float]] = {
     True: (0.0, 3.0),    # linear
 }
 
-# How a stated preference shifts the acceptable ease band, in cm, for a girth zone.
-# Linear zones use a quarter of the shift.
+# How far a stated preference shifts the acceptable ease band, in cm, before the zone's own
+# scale. Each zone takes it at its offset_scale, as it takes a learned offset: whole at the
+# chest, waist and hip, half at the thigh, a quarter on the lengths, a fifth at the collar.
 PREFERENCE_SHIFT: dict[str, float] = {
     "very_fitted": -7.0,
     "fitted": -3.5,

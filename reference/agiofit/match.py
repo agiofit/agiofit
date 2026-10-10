@@ -338,7 +338,7 @@ def _when(stamp: object) -> datetime:
     return moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
 
 
-def _preference_shift(profile: dict, category: str, zone: str, linear: bool) -> float:
+def _preference_shift(profile: dict, category: str, zone: str, scale: float) -> float:
     """How far the person's stated wishes move the ease band of one zone.
 
     One preference decides each zone. One about the zone itself wins over one about the
@@ -347,6 +347,11 @@ def _preference_shift(profile: dict, category: str, zone: str, linear: bool) -> 
     a repeated import counted twice, "relaxed overall" widened shoulders the person had asked
     to keep regular, and a declared wish and an inferred one cancelled out without anyone
     being told.
+
+    The shift is taken at the zone's own scale, the one a learned offset is taken at. It used to
+    be whole on every girth, so "relaxed" asked a collar for four more centimetres, where a
+    centimetre is a whole size: every collar of a shirt came out tight, and one three
+    centimetres larger than the neck was judged snug.
     """
     candidates = [
         pref
@@ -366,7 +371,7 @@ def _preference_shift(profile: dict, category: str, zone: str, linear: bool) -> 
     )
     weight = float(pref.get("strength", 1.0)) * float(pref.get("confidence", 0.7))
     base = PREFERENCE_SHIFT.get(pref.get("preference", "regular"), 0.0)
-    return base * weight * (0.25 if linear else 1.0)
+    return base * weight * scale
 
 
 def _usable_stretch(garment: dict) -> float:
@@ -714,7 +719,7 @@ def recommend(
                 lo, hi = default_ease(category, mapping.zone, mapping.linear)
                 fallback_zones += 1
 
-            shift = _preference_shift(profile, category, mapping.zone, mapping.linear)
+            shift = _preference_shift(profile, category, mapping.zone, mapping.offset_scale)
             shift += history_offsets.get(mapping.zone, 0.0) * mapping.offset_scale
             lo, hi = lo + shift, hi + shift
 

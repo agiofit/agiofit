@@ -69,9 +69,10 @@ Eight details worth stealing:
   the report is not softened, so a waist that is too loose is still reported as too loose. A zone
   listed without a verdict of its own says what was tolerated but not which way, and teaches
   nothing.
-- **Learned offsets are scaled per zone.** A brand that runs small runs small in the torso. Shifting
-  a collar by the same number of centimetres turns a useful correction into a wrong answer, since a
-  centimetre at the neck is an entire size.
+- **Learned offsets and preferences are scaled per zone.** A brand that runs small runs small in
+  the torso. Shifting a collar by the same number of centimetres turns a useful correction into a
+  wrong answer, since a centimetre at the neck is an entire size, and a stated preference is no
+  different: a relaxed collar is about a size larger, not four.
 - **Same-brand history counts double.** Sizing drift is overwhelmingly brand-specific.
 - **The same outcome counts once.** An entry identical to another in everything but `source` and
   `import_ref`, with its date read as a moment, is the same event written twice, and counts once.

@@ -68,3 +68,6 @@ and a size system written inside one is not guessed.
 
 A measurement under a name this implementation does not know is named from `explained` up, so
 the person can find it.
+
+A preference moves each zone as far as a learned correction does: at the collar, where a
+centimetre is a whole size, a relaxed fit is about a size larger, not four.

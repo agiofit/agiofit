@@ -1205,3 +1205,27 @@ def test_a_never_shared_measurement_is_never_named(mature, shirt):
     said = everything_said(whole)
     for key in ("arm_length", "inseam", "thigh_circumference", "chest_circumference"):
         assert not mentions(said, key)
+
+
+def test_a_preference_at_the_collar_moves_it_by_a_collar_not_by_a_chest(mature, shirt):
+    """A preference used to move every girth by the same centimetres, so "relaxed" asked a collar
+    for four more, where a centimetre is a whole size and the brand allows one and a half: every
+    collar came out tight, and a "fitted" collar with the room the brand intends came out too
+    loose. A preference now moves each zone by the scale a learned correction is taken at."""
+    plain = _bands(_with_preferences(mature), shirt)
+    relaxed = _bands(_with_preferences(mature, RELAXED), shirt)
+    chest_moved = relaxed["chest"][0] - plain["chest"][0]
+    neck_moved = relaxed["neck"][0] - plain["neck"][0]
+    # Less than a collar size at the collar, the full step at the chest.
+    assert 0 < neck_moved < 1.0 < chest_moved
+
+    for preference, wrong in (
+        ("relaxed", {"snug", "too_tight"}),
+        ("oversized", {"snug", "too_tight"}),
+        ("fitted", {"too_loose"}),
+        ("very_fitted", {"too_loose"}),
+    ):
+        wish = ("neck", preference, "declared", "2026-09-01T00:00:00Z")
+        report = recommend(_with_preferences(mature, wish), shirt, disclosure_level="explained")
+        collar = next(line for line in report.explanation if line.zone == "neck")
+        assert collar.assessment not in wrong, preference
