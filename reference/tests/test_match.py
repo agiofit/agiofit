@@ -1139,3 +1139,69 @@ def test_a_size_system_inside_a_label_is_not_guessed(cold, shirt):
 
     assert out["recommended_size"] is None
     assert any("No usable purchase history" in c for c in out["caveats"])
+
+
+def test_a_measurement_under_a_name_this_implementation_does_not_know_is_named(
+    mature, cold, shirt
+):
+    """Written as "chest" instead of chest_circumference, the chest used to vanish: the answer
+    said only that some zone had no matching measurement, and improve_by asked for the very
+    measurement the person had just written. The name now appears where an explanation is
+    sent. Not at result_only, where it would only tell the verifier what the profile holds, and
+    never for an x_ extension, which the schema allows on purpose."""
+    import copy
+
+    def named(profile, level):
+        out = recommend(profile, shirt, disclosure_level=level).to_json()
+        return [c for c in out["caveats"] if "does not know" in c]
+
+    renamed = copy.deepcopy(mature)
+    measurements = renamed["body"]["measurements"]
+    measurements["chest"] = measurements.pop("chest_circumference")
+    measurements["x_torso_length"] = dict(measurements["chest"], value=70)
+
+    said = named(renamed, "explained")
+    assert len(said) == 1 and said[0].endswith(": chest.")
+    assert named(renamed, "result_only") == []
+    assert named(mature, "explained") == []
+
+    # A profile whose only measurement is misnamed has nothing to compare at all.
+    only = copy.deepcopy(cold)
+    chest = mature["body"]["measurements"]["chest_circumference"]
+    only["body"] = {"measurements": {"chest": chest}}
+    assert named(only, "explained")
+
+
+def test_a_never_shared_measurement_is_never_named(mature, shirt):
+    """The mature profile keeps its hips to itself. Taken from memory, they used to come back at
+    every level as "Re-measure with a tape: ..., hip_circumference, ...", telling the verifier
+    that the profile holds them and how they were taken; and listing the whole body layer left
+    every other name in place."""
+    import copy
+
+    def everything_said(profile):
+        said = []
+        for level in ("result_only", "explained", "scoped", "full"):
+            out = recommend(profile, shirt, disclosure_level=level).to_json()
+            said += out["caveats"] + out["improve_by"]
+        return " ".join(said)
+
+    def mentions(text, key):
+        return key in text or key.replace("_", " ") in text
+
+    remembered = copy.deepcopy(mature)
+    remembered["body"]["measurements"]["hip_circumference"]["source"] = "self_reported"
+    assert not mentions(everything_said(remembered), "hip_circumference")
+    assert mentions(everything_said(remembered), "arm_length")
+
+    hidden = copy.deepcopy(mature)
+    measurements = hidden["body"]["measurements"]
+    measurements["hips"] = measurements.pop("hip_circumference")
+    hidden["disclosure_defaults"]["never_share"] = ["hips"]
+    assert not mentions(everything_said(hidden), "hips")
+
+    whole = copy.deepcopy(mature)
+    whole["disclosure_defaults"]["never_share"] = ["body"]
+    said = everything_said(whole)
+    for key in ("arm_length", "inseam", "thigh_circumference", "chest_circumference"):
+        assert not mentions(said, key)

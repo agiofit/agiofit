@@ -20,12 +20,14 @@ person's level is a default, not a ceiling: a request may name another level, an
 verifier may ever receive more than the person's default is for the vault to decide.
 
 A measurement the person lists in `disclosure_defaults.never_share` MUST NOT reach a report at
-any level, as a number or as a per-zone judgement: a judgement read against the garment's
-public measurements narrows the body measurement to the width of the ease band. Listing the
-`body` layer withholds every zone. The measurement still counts towards the answer, because the
-computation happens where the profile lives; what the list governs is what leaves it. The
-reference implementation leaves such a zone out of the explanation altogether and, from
-`explained` up, says in `caveats` that some zones were withheld at the person's request.
+any level, as a number, as a per-zone judgement or by name: a judgement read against the
+garment's public measurements narrows the body measurement to the width of the ease band, and a
+name, even in a suggestion to take the measurement again, says that it exists and how it was
+taken. Listing the `body` layer withholds every zone and every name. The measurement still
+counts towards the answer, because the computation happens where the profile lives; what the
+list governs is what leaves it. The reference implementation leaves such a zone out of the
+explanation altogether and, from `explained` up, says in `caveats` that some zones were
+withheld at the person's request.
 
 The intended architecture is that the *computation happens where the profile lives* — a vault, a
 wallet, or a fit provider the person chose — and only the result travels. A retailer does not need

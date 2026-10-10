@@ -253,6 +253,9 @@ class MatchReport:
     # Zones whose explanation never leaves, because the person listed their measurement in
     # never_share. Kept on the report and never serialised: to_json reads it to drop the lines.
     withheld_zones: list[str] = field(default_factory=list)
+    # Body measurements under names this implementation does not know. Kept on the report and
+    # named by to_json only where an explanation is sent.
+    unknown_measurements: list[str] = field(default_factory=list)
 
     def to_json(self) -> dict:
         """Serialise at the declared disclosure level.
@@ -266,6 +269,10 @@ class MatchReport:
         A zone whose measurement the person listed in never_share is left out altogether,
         judgement included: "as cut", read against the published garment and its ease band,
         narrows the body measurement to the width of the band.
+
+        A measurement under a name this implementation does not know is named, so that the person
+        can find it, but only where an explanation is sent: at result_only the name would tell
+        the verifier what the profile holds, and nothing more.
         """
         level = _checked_level(self.disclosure_level, "This report")
         out = {
@@ -296,12 +303,18 @@ class MatchReport:
                 d["intended_ease_cm"] = list(d["intended_ease_cm"])
             lines.append(d)
         out["explanation"] = lines
+        # Said only where an explanation is sent: at result_only there is nothing to withhold,
+        # and either sentence would only tell the verifier something about the profile.
+        told = []
         if len(lines) < len(self.explanation):
-            # Said only where an explanation is sent: at result_only there is nothing to
-            # withhold, and announcing it would only tell the verifier there is something.
-            out["caveats"] = self.caveats + [
-                "Some zones are not explained here, at the person's request."
-            ]
+            told.append("Some zones are not explained here, at the person's request.")
+        if self.unknown_measurements:
+            told.append(
+                "The profile has measurements under names this implementation does not know, "
+                "so they were not used: " + ", ".join(self.unknown_measurements) + "."
+            )
+        if told:
+            out["caveats"] = self.caveats + told
         return out
 
 
@@ -608,6 +621,7 @@ def recommend(
     declared_ease = garment.get("intended_ease") or {}
 
     body = ((profile.get("body") or {}).get("measurements")) or {}
+    unknown_measurements = _unknown_measurements(profile, body)
     history_offsets, history_n, brand_history_n, history_evidence = _history_offsets(
         profile, garment, now
     )
@@ -804,6 +818,7 @@ def recommend(
             improve_by=_improvements(body, profile, garment),
             computed_at=computed_at,
             withheld_zones=withheld_zones,
+            unknown_measurements=unknown_measurements,
         )
 
     best_score, best_label, best_lines = scored[0]
@@ -922,6 +937,30 @@ def recommend(
         improve_by=_improvements(body, profile, garment),
         computed_at=computed_at,
         withheld_zones=withheld_zones,
+        unknown_measurements=unknown_measurements,
+    )
+
+
+def _never_shared(profile: dict) -> set[str]:
+    """What the person listed in never_share: measurement keys, or whole layers."""
+    return set((profile.get("disclosure_defaults") or {}).get("never_share") or [])
+
+
+def _unknown_measurements(profile: dict, body: dict) -> list[str]:
+    """The body measurements this implementation cannot read, by the names they were given.
+
+    Such a measurement is left out of the answer, which used to say only that some zone had no
+    matching measurement, while improve_by asked for the very measurement the person had just
+    written as "chest". Keys prefixed x_ are extensions the schema allows, so not knowing them is
+    expected and they are not named. Nor is anything the person listed in never_share: a name
+    alone says that the measurement exists.
+    """
+    never = _never_shared(profile)
+    if "body" in never:
+        return []
+    known = {m.body_key for m in ZONE_MAPPINGS}
+    return sorted(
+        key for key in body if key not in known and not key.startswith("x_") and key not in never
     )
 
 
@@ -933,7 +972,7 @@ def _withheld_zones(profile: dict) -> list[str]:
     towards the answer: the computation happens where the profile lives, and what the
     list governs is what leaves it.
     """
-    never = set((profile.get("disclosure_defaults") or {}).get("never_share") or [])
+    never = _never_shared(profile)
     if not never:
         return []
     return sorted(m.zone for m in ZONE_MAPPINGS if "body" in never or m.body_key in never)
@@ -1017,12 +1056,28 @@ def _confidence(
 
 
 def _improvements(body: dict, profile: dict, garment: dict) -> list[str]:
+    """What the person could add, or take again, to make the next answer better.
+
+    It travels at every level, result_only included, so it never names a measurement the person
+    listed in never_share, and none at all when the whole body layer is listed. "Re-measure with
+    a tape: hip_circumference" told the verifier that the profile holds the hips the person had
+    kept to themselves, and that they were taken from memory.
+    """
     out: list[str] = []
+    never = _never_shared(profile)
+
+    def nameable(key: str) -> bool:
+        return "body" not in never and key not in never
+
     needed = {m.body_key for m in ZONE_MAPPINGS}
-    missing = [k for k in sorted(needed) if k not in body]
+    missing = [k for k in sorted(needed) if k not in body and nameable(k)]
     for key in missing[:3]:
         out.append(f"Add a measurement for {key.replace('_', ' ')}.")
-    weak = [k for k, v in body.items() if v.get("source") in ("self_reported", "estimated_from_size_labels")]
+    weak = [
+        k
+        for k, v in body.items()
+        if v.get("source") in ("self_reported", "estimated_from_size_labels") and nameable(k)
+    ]
     if weak:
         out.append(f"Re-measure with a tape: {', '.join(sorted(weak)[:3])}.")
     if not profile.get("history"):

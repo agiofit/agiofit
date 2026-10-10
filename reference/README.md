@@ -37,7 +37,8 @@ estimates, critical zones counting triple.
 The disclosure level is held to the same standard: a level this implementation does not recognise
 is refused rather than serialised, and when no level is requested the person's `default_level`
 applies, falling back to `result_only`. A measurement the person lists in `never_share` never
-leaves, as a number or as a judgement, at any level, though it still counts towards the answer.
+leaves, as a number, as a judgement or by name, at any level, though it still counts towards the
+answer.
 
 History is read at the resolution it was written: a return that says where the garment was
 wrong corrects those zones, and only a return that does not say where moves them all.
@@ -64,3 +65,6 @@ history that has aged as a whole leaves the bands where they were and makes the 
 
 A size label is read the way a person reads it: spaces and capitals do not make another label,
 and a size system written inside one is not guessed.
+
+A measurement under a name this implementation does not know is named from `explained` up, so
+the person can find it.
