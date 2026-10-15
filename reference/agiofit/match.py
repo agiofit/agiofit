@@ -29,7 +29,9 @@ IN_TO_CM = 2.54
 CRITICAL_WEIGHT = 3.0
 
 # The most a cold start may claim, and the most an answer may claim when the measurements behind
-# it are label estimates. One constant for both, because both rest on the same evidence.
+# it are label estimates. One constant for both, because both rest on the same evidence. A size
+# the explanation calls too tight or too loose somewhere is held to it as well: it is the closest
+# there is, a starting point like a guess from labels, not an answer.
 COLD_START_CEILING = 0.40
 
 # The tolerance a body measurement is taken to have when the profile leaves it out: the wide end
@@ -588,6 +590,33 @@ def _tolerances(profile: dict, garment: dict) -> dict[str, set[str]]:
     return tolerated
 
 
+def _clearly_wrong(
+    lines: list[ExplanationLine], tolerated: dict[str, set[str]]
+) -> list[ExplanationLine]:
+    """The zones a size is judged clearly wrong at, as far as this person is concerned.
+
+    Too tight or too loose is the explanation saying that the size does not fit there, beyond
+    what the tolerances of both measurements account for, and the answer is held to it. A flaw
+    the person has already kept a garment despite, in that direction, is the exception: the
+    judgement still says so, as it always does, but for this person it is no reason to doubt
+    the size.
+    """
+    return [
+        line
+        for line in lines
+        if line.assessment in ("too_tight", "too_loose")
+        and FLAW_DIRECTION[line.assessment] not in tolerated.get(line.zone, ())
+    ]
+
+
+def _cannot_be_let_out(lines: list[ExplanationLine], tolerated: dict[str, set[str]]) -> bool:
+    """Whether a size is too tight at a critical zone, where a seam cannot be let out."""
+    return any(
+        line.critical and line.assessment == "too_tight"
+        for line in _clearly_wrong(lines, tolerated)
+    )
+
+
 def _assess(ease: float, lo: float, hi: float, slack: float) -> str:
     if ease < lo - slack:
         return "too_tight"
@@ -777,6 +806,17 @@ def recommend(
     if rejected and not all_returned:
         scored = [t for t in scored if _label_key(t[1]) not in returned_labels]
 
+    # A size judged too tight where the garment cannot be let out does not fit, however it does
+    # elsewhere and however it compares with the others. Like a size already returned, it leaves
+    # the candidates and comes back among the alternatives with the reason. The scores weigh such
+    # a zone heavily already, so this seldom changes which size wins. It matters when every size
+    # is too tight there: the answer used to be the least tight of them, named with the confidence
+    # of one that fits.
+    unfit = [] if all_returned else [t for t in scored if _cannot_be_let_out(t[2], tolerated)]
+    nothing_fits = bool(unfit) and len(unfit) == len(scored)
+    if unfit and not nothing_fits:
+        scored = [t for t in scored if all(t is not u for u in unfit)]
+
     computed_at = now.isoformat(timespec="seconds")
     based_on = {
         "body_signals": len(body),
@@ -849,6 +889,19 @@ def recommend(
             "capped as it is for an answer drawn from purchase history alone."
         )
 
+    # An answer is held to its own explanation. A size named while the explanation calls it too
+    # tight or too loose somewhere used to come with the confidence of one that fits: for a
+    # 120 cm chest the answer was a 42 at 0.80, a shirt with no ease left there. It is still
+    # named, as the closest there is, but no surer than a cold start, and the person is told at
+    # every level, without the zone, which only the explanation names.
+    misfits = [] if (all_returned or nothing_fits) else _clearly_wrong(best_lines, tolerated)
+    if misfits:
+        confidence = min(confidence, COLD_START_CEILING)
+        caveats.append(
+            "The recommended size is clearly too tight or too loose somewhere: it is the closest "
+            "size, not one that fits."
+        )
+
     if fallback_zones:
         caveats.append(
             "The garment does not publish an intended ease for every zone; category defaults were used."
@@ -916,9 +969,24 @@ def recommend(
             "Every size of this garment has already been returned by this person. "
             "No size is named, deliberately."
         )
-    recommended = None if all_returned else (best_label if confidence >= 0.25 else None)
-    if recommended is None:
-        caveats.append("Not enough signal to name a size. Returning alternatives only, deliberately.")
+    if nothing_fits:
+        # The same, for sizes too tight where they cannot be let out, and the reason goes out at
+        # every level: without it a result_only answer reads as not knowing, when what is known
+        # is that nothing here fits.
+        caveats.append(
+            ("Every other size" if rejected else "Every size")
+            + " of this garment is too tight where it cannot be let out. No size is named, "
+            "deliberately."
+        )
+    if all_returned or nothing_fits:
+        # The reason has just been given, and "not enough signal" would be false next to it.
+        recommended = None
+    else:
+        recommended = best_label if confidence >= 0.25 else None
+        if recommended is None:
+            caveats.append(
+                "Not enough signal to name a size. Returning alternatives only, deliberately."
+            )
 
     return MatchReport(
         cut_profile_id=garment.get("cut_profile_id", ""),
@@ -926,7 +994,8 @@ def recommend(
         confidence=confidence,
         disclosure_level=disclosure_level,
         alternatives=[
-            {"size_label": lbl, "score": round(sc, 2)} for sc, lbl, _ in scored[1:4]
+            {"size_label": lbl, "score": round(sc, 2)}
+            for sc, lbl, _ in ([] if nothing_fits else scored[1:4])
         ]
         + [
             {
@@ -935,6 +1004,14 @@ def recommend(
                 "note": "Already returned for this garment.",
             }
             for sc, lbl, _ in (rejected if not all_returned else [])
+        ]
+        + [
+            {
+                "size_label": lbl,
+                "score": round(sc, 2),
+                "note": "Too tight where it cannot be let out.",
+            }
+            for sc, lbl, _ in unfit
         ],
         explanation=best_lines,
         based_on=based_on,

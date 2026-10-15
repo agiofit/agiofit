@@ -71,3 +71,7 @@ the person can find it.
 
 A preference moves each zone as far as a learned correction does: at the collar, where a
 centimetre is a whole size, a relaxed fit is about a size larger, not four.
+
+A size is held to its own explanation: one too tight where a seam cannot be let out is not
+recommended, and any other that is too tight or too loose somewhere is named as the closest there
+is, no surer than a cold start, unless the person has already kept a garment despite that flaw.

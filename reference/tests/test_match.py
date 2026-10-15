@@ -475,6 +475,8 @@ def test_no_size_is_named_when_every_size_came_back(mature, shirt):
 
     assert out["recommended_size"] is None
     assert any("already been returned" in c for c in out["caveats"])
+    # The reason is given, so the one for an answer that knows too little is not added beside it.
+    assert not any("Not enough signal" in c for c in out["caveats"])
 
 
 def test_unused_measurements_are_declared(mature, shirt):
@@ -1229,3 +1231,58 @@ def test_a_preference_at_the_collar_moves_it_by_a_collar_not_by_a_chest(mature, 
         report = recommend(_with_preferences(mature, wish), shirt, disclosure_level="explained")
         collar = next(line for line in report.explanation if line.zone == "neck")
         assert collar.assessment not in wrong, preference
+
+
+def test_a_size_too_tight_where_it_cannot_be_let_out_is_not_named(mature, shirt):
+    """A 46 cm neck closes no collar of this shirt, the largest being 43. The answer used to be
+    the 42, at the confidence of a shirt that fits, and at result_only nothing said otherwise. A
+    size too tight where a seam cannot be let out is no longer a candidate: when it is only some
+    sizes, one of the others is named; when it is every size, none is, and the reason goes out
+    at every level."""
+    import copy
+
+    def with_neck(cm):
+        profile = copy.deepcopy(mature)
+        profile["body"]["measurements"]["neck_circumference"]["value"] = cm
+        return profile
+
+    out = recommend(with_neck(46), shirt, disclosure_level="result_only").to_json()
+    assert out["recommended_size"] is None
+    assert any("cannot be let out" in c for c in out["caveats"])
+    assert not any("Not enough signal" in c for c in out["caveats"])
+
+    explained = recommend(with_neck(46), shirt, disclosure_level="explained").to_json()
+    labels = {size["size_label"] for size in shirt["sizes"]}
+    assert {alt["size_label"] for alt in explained["alternatives"]} == labels
+    assert all(alt.get("note") for alt in explained["alternatives"])
+
+    # At 43 cm only the 42 closes: it is named, and the others come back with the reason.
+    out = recommend(with_neck(43), shirt, disclosure_level="explained").to_json()
+    assert out["recommended_size"] == "42"
+    noted = {alt["size_label"] for alt in out["alternatives"] if alt.get("note")}
+    assert noted == {"39", "40", "41"}
+
+
+def test_a_size_that_does_not_fit_elsewhere_is_named_only_as_the_closest(mature, shirt):
+    """A 120 cm chest leaves the largest shirt no ease at all, and the 42 used to come out at
+    0.80, with nothing said at result_only. The chest is not a critical zone of a shirt, so the
+    size is still named, as the closest there is, but no surer than a cold start and with the
+    reason at every level. A flaw the person has kept a garment despite does not count: the
+    mature profile kept a shirt with a roomy waist, and a waist that is too loose leaves the
+    answer as sure as it was."""
+    import copy
+
+    broad = copy.deepcopy(mature)
+    broad["body"]["measurements"]["chest_circumference"]["value"] = 120
+    out = recommend(broad, shirt, disclosure_level="result_only").to_json()
+    assert out["recommended_size"] == "42"
+    assert out["confidence"] <= 0.40
+    assert any("not one that fits" in c for c in out["caveats"])
+
+    slender = copy.deepcopy(mature)
+    slender["body"]["measurements"]["waist_circumference"]["value"] = 74
+    report = recommend(slender, shirt, disclosure_level="explained")
+    waist = next(line for line in report.explanation if line.zone == "waist")
+    assert waist.assessment == "too_loose"
+    assert report.confidence > 0.40
+    assert not any("not one that fits" in c for c in report.to_json()["caveats"])

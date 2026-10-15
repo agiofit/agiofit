@@ -109,7 +109,8 @@ kept, which are centimetres, not labels.
 Confidence is a producer's own estimate, not a probability. The reference implementation combines
 zone coverage, coverage of *critical* zones specifically, the quality of the measurement sources,
 the margin between the best size and the runner-up, and the volume of relevant history, under a
-ceiling when the measurements used were estimated from size labels (see *Cold start*).
+ceiling when the measurements used were estimated from size labels (see *Cold start*), and under
+the same ceiling when the size it names does not fit somewhere (see below).
 
 Critical zone coverage counts every critical zone the consumer knows about, including the ones it
 could not reach: a zone with no mapping, and a zone whose measurement the garment never published,
@@ -127,5 +128,13 @@ adult do not. Age changes how far an answer can be trusted, not the judgement of
 The volume of history is judged the same way, zone by zone with critical zones triple, and an
 outcome counts for less on a girth as it ages, as a measurement does. Outcomes of one age keep
 the judgement they gave: only next to a more recent one does an old outcome say less.
+
+An answer is held to its own explanation. A size the reference implementation judges too tight at
+a critical zone, where a seam cannot be let out, is not a candidate: like a size already returned,
+it comes back among the alternatives with the reason, and when every size is, no size is named and
+`caveats` says why. A size it does name while judging it too tight or too loose somewhere is named
+as the closest there is, with no more confidence than a cold start may claim, and `caveats` says so
+at every level, without naming the zone. A flaw the person has already kept a garment despite, in
+that direction, counts against neither.
 
 A consumer MUST NOT present a confidence from another implementation as comparable to its own.
