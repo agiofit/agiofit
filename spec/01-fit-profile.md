@@ -72,7 +72,16 @@ will accept a slightly loose waist to get the shoulders right. That distinction 
 between a system that annoys people and one they trust.
 
 `import_ref` groups everything that arrived from one source, so a person can delete an entire
-import in one action. Producers SHOULD populate it for any imported batch.
+import in one action. Producers SHOULD populate it for any imported batch. It names the batch and
+nothing else: it MUST NOT carry a retailer's customer ID, an order number or any other identifier
+taken from the source, for the reason `profile_id` must not (see *Identifiers*). The profile
+travels whole when the person moves it to another vault or shares it at `full`, and such a
+reference would tie it to the source's records.
+
+`source` says who recorded an outcome, not how much it counts. What happened to a garment does not
+change with who wrote it down, so the reference implementation gives an outcome the same weight
+whoever recorded it, as `02-cut-profile.md` gives none to `provenance.published_by`: weighting the
+field would weight the label on an entry instead of what the entry says.
 
 `garment_ref.category` is what lets one garment teach anything about another, and producers
 SHOULD fill it. An importer that cannot tell the category SHOULD leave it out rather than guess:

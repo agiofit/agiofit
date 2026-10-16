@@ -1751,3 +1751,37 @@ def test_a_history_kept_private_is_not_asked_for(mature, shirt):
         listed = copy.deepcopy(profile)
         listed["disclosure_defaults"]["never_share"] = ["history"]
         assert not asks(listed)
+
+
+def test_who_recorded_an_outcome_does_not_change_its_weight(mature, shirt):
+    """Most of the mature profile's history came from a shop's export. The same outcomes written
+    by the person, or by a marketplace, say the same thing about the same garments, and the
+    reports are the same at every level: who recorded an outcome is not how much it counts, as
+    who published a Cut Profile is not."""
+    import copy
+
+    for source in ("user", "retailer_import", "marketplace_import"):
+        recorded = copy.deepcopy(mature)
+        for entry in recorded["history"]:
+            entry["source"] = source
+        for level in ("result_only", "explained", "scoped", "full"):
+            plain = recommend(mature, shirt, disclosure_level=level).to_json()
+            assert recommend(recorded, shirt, disclosure_level=level).to_json() == plain, (
+                source,
+                level,
+            )
+
+
+def test_an_import_reference_never_leaves(mature, shirt):
+    """import_ref names a batch, so that the person can delete it in one action. One written
+    from a shop's customer code, which the specification forbids, still never reaches a report,
+    at any level, and changes nothing in it."""
+    import copy
+
+    coded = copy.deepcopy(mature)
+    for entry in coded["history"]:
+        entry["import_ref"] = "shop-customer-8812345"
+    for level in ("result_only", "explained", "scoped", "full"):
+        out = recommend(coded, shirt, disclosure_level=level).to_json()
+        assert "8812345" not in json.dumps(out), level
+        assert out == recommend(mature, shirt, disclosure_level=level).to_json(), level

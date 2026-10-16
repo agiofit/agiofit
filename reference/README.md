@@ -95,3 +95,6 @@ centimetres without inventing them.
 `never_share` leaves its counts out, and a measurement listed there is not counted.
 Nor is a layer the person lists there told through the reasoning: no caveat, note or suggestion
 about it leaves, and a size set aside for its sake leaves the alternatives.
+
+Who recorded an outcome does not change how much it counts, and `import_ref` never reaches a
+report.
