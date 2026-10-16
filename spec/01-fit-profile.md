@@ -33,7 +33,8 @@ What the person *wants*, per `category` and `zone`, on a five-point scale shared
 `cut` field so the two can be compared directly.
 
 `strength` separates a taste from a constraint. "I prefer relaxed sleeves" and "I cannot wear
-anything tight at the neck" are not the same statement and MUST NOT be encoded identically.
+anything tight at the neck" are not the same statement and MUST NOT be encoded identically. A
+producer SHOULD write a constraint the person states at `strength` 1, and a stated taste below it.
 
 Preferences MAY be inferred from history, in which case `source` is `inferred_from_history` and the
 producer SHOULD make the inference visible to the person, who can then correct it.

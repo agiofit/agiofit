@@ -937,7 +937,8 @@ def test_a_kept_flaw_teaches_only_the_direction_it_was_kept_in(mature, shirt):
 
 def _with_preferences(profile, *preferences):
     """The profile with its preferences replaced by shirt ones, each (zone, preference, source,
-    updated_at), at full strength and confidence."""
+    updated_at), taken whole. No strength is written, so each is a taste and none a constraint:
+    these tests are about how far a preference moves a band, not about what it rules out."""
     import copy
 
     profile = copy.deepcopy(profile)
@@ -946,7 +947,6 @@ def _with_preferences(profile, *preferences):
             "category": "shirts",
             "zone": zone,
             "preference": preference,
-            "strength": 1.0,
             "source": source,
             "confidence": 1.0,
             "updated_at": when,
@@ -1286,3 +1286,80 @@ def test_a_size_that_does_not_fit_elsewhere_is_named_only_as_the_closest(mature,
     assert waist.assessment == "too_loose"
     assert report.confidence > 0.40
     assert not any("not one that fits" in c for c in report.to_json()["caveats"])
+
+
+def _constraint(profile, zone, preference, **fields):
+    """The profile with one more shirt preference, declared and at full strength unless fields
+    say otherwise. A field given as None is left out."""
+    import copy
+
+    profile = copy.deepcopy(profile)
+    added = {
+        "category": "shirts",
+        "zone": zone,
+        "preference": preference,
+        "strength": 1.0,
+        "source": "declared",
+        "confidence": 0.8,
+        "updated_at": "2026-09-01T00:00:00Z",
+    }
+    added.update(fields)
+    profile["preferences"].append({k: v for k, v in added.items() if v is not None})
+    return profile
+
+
+def test_a_constraint_the_person_declared_rules_a_size_out(mature, shirt):
+    """An app writes "I cannot wear anything tight at the chest" as a regular chest at full
+    strength. Strength only scaled a shift, and a regular fit has none, so the line changed
+    nothing: at a 112 cm chest, which no size of this shirt leaves room for, the answer was the
+    closest size. A preference the person declared at full strength is now a constraint: a size
+    that breaks it is not a candidate, and when every size does, none is named, with the reason
+    at every level. Below full strength, inferred from history or with no strength written, a
+    preference is a taste, and the closest size is named as before."""
+    import copy
+
+    broad = copy.deepcopy(mature)
+    broad["body"]["measurements"]["chest_circumference"]["value"] = 112
+
+    held = _constraint(broad, "chest", "regular")
+    out = recommend(held, shirt, disclosure_level="result_only").to_json()
+    assert out["recommended_size"] is None
+    assert any("outside a limit the person has set" in c for c in out["caveats"])
+    assert not any("Not enough signal" in c for c in out["caveats"])
+
+    for taste in ({"strength": 0.5}, {"source": "inferred_from_history"}, {"strength": None}):
+        out = recommend(_constraint(broad, "chest", "regular", **taste), shirt).to_json()
+        assert out["recommended_size"] == "42", taste
+
+
+def test_a_constraint_rules_out_what_its_preference_asks_against(mature, shirt):
+    """A relaxed or oversized fit held as a constraint rules out tight, a fitted one loose, and a
+    regular one both. On the slim variant the 41 and the 42 are too loose at the chest: a regular
+    chest held as a constraint rules them out, and they come back with a reason that names
+    neither the zone nor the preference, while a relaxed one leaves them in. Nor does a garment
+    kept despite the flaw excuse it: the mature profile kept a shirt with a roomy waist, and at a
+    74 cm waist, too loose in the 41, the 41 is named only while a fitted waist is a taste."""
+    import copy
+
+    slim = _slim(shirt)
+    held = recommend(_constraint(mature, "chest", "regular"), slim, disclosure_level="explained")
+    out = held.to_json()
+    assert out["recommended_size"] not in (None, "41", "42")
+    noted = {
+        alt["size_label"]
+        for alt in out["alternatives"]
+        if alt.get("note") == "Outside a limit the person has set."
+    }
+    assert {"41", "42"} <= noted
+    relaxed = recommend(
+        _constraint(mature, "chest", "relaxed"), slim, disclosure_level="explained"
+    ).to_json()
+    assert relaxed["recommended_size"] == "41"
+    assert not any(alt.get("note") for alt in relaxed["alternatives"])
+
+    slender = copy.deepcopy(mature)
+    slender["body"]["measurements"]["waist_circumference"]["value"] = 74
+    held = recommend(_constraint(slender, "waist", "fitted"), shirt).to_json()
+    assert held["recommended_size"] != "41"
+    taste = recommend(_constraint(slender, "waist", "fitted", strength=0.5), shirt).to_json()
+    assert taste["recommended_size"] == "41"

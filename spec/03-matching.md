@@ -137,4 +137,11 @@ as the closest there is, with no more confidence than a cold start may claim, an
 at every level, without naming the zone. A flaw the person has already kept a garment despite, in
 that direction, counts against neither.
 
+A constraint the person declared, a preference at `strength` 1 with `source` `declared`, is held
+the same way: a size the reference implementation judges too tight where the preference rules out
+tight, or too loose where it rules out loose, is not a candidate either. A relaxed or oversized fit
+rules out tight, a fitted or very fitted one loose, and a regular fit both. A garment the person
+kept despite such a flaw does not excuse it: the constraint is what they say now. Inferred from
+history, or with no `strength` written, a preference is a taste, and only moves the ease band.
+
 A consumer MUST NOT present a confidence from another implementation as comparable to its own.

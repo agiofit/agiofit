@@ -75,3 +75,6 @@ centimetre is a whole size, a relaxed fit is about a size larger, not four.
 A size is held to its own explanation: one too tight where a seam cannot be let out is not
 recommended, and any other that is too tight or too loose somewhere is named as the closest there
 is, no surer than a cold start, unless the person has already kept a garment despite that flaw.
+
+A preference the person declared at full strength is a constraint, not a strong taste: a size that
+breaks it is not recommended, and when every size does, none is.

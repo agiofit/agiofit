@@ -355,15 +355,29 @@ def _preference_shift(profile: dict, category: str, zone: str, scale: float) -> 
     centimetre is a whole size: every collar of a shirt came out tight, and one three
     centimetres larger than the neck was judged snug.
     """
+    pref = _deciding_preference(profile, category, zone)
+    if pref is None:
+        return 0.0
+    weight = float(pref.get("strength", 1.0)) * float(pref.get("confidence", 0.7))
+    base = PREFERENCE_SHIFT.get(pref.get("preference", "regular"), 0.0)
+    return base * weight * scale
+
+
+def _deciding_preference(profile: dict, category: str, zone: str) -> dict | None:
+    """The one preference that decides a zone, chosen as _preference_shift says, or None.
+
+    The same one says how far the ease band moves and whether the zone has a constraint, so two
+    preferences never speak for one zone.
+    """
     candidates = [
         pref
         for pref in profile.get("preferences", [])
         if pref.get("category") == category and pref.get("zone") in (zone, "overall")
     ]
     if not candidates:
-        return 0.0
+        return None
     # Among equals, the one written last: max keeps the first of its ties, so read backwards.
-    pref = max(
+    return max(
         reversed(candidates),
         key=lambda p: (
             p.get("zone") == zone,
@@ -371,9 +385,23 @@ def _preference_shift(profile: dict, category: str, zone: str, scale: float) -> 
             _when(p.get("updated_at")),
         ),
     )
-    weight = float(pref.get("strength", 1.0)) * float(pref.get("confidence", 0.7))
-    base = PREFERENCE_SHIFT.get(pref.get("preference", "regular"), 0.0)
-    return base * weight * scale
+
+
+def _ruled_out(profile: dict, category: str, zone: str) -> frozenset[str]:
+    """What the person has said they cannot wear at one zone: the directions ruled out, if any.
+
+    A constraint is a preference the person declared at full strength. One inferred from history
+    is a system's guess at what the person wants, and a guess is not a "never". One with no
+    strength written is a taste: the shift takes it whole, but a constraint has to be said, not
+    assumed. Strength used to scale the shift and nothing else, so "I cannot wear anything tight
+    at the neck" weighed like "I prefer it relaxed", only more.
+    """
+    pref = _deciding_preference(profile, category, zone)
+    if pref is None or pref.get("source") != "declared" or "strength" not in pref:
+        return frozenset()
+    if float(pref["strength"]) < 1.0:
+        return frozenset()
+    return RULED_OUT.get(pref.get("preference"), frozenset())
 
 
 def _usable_stretch(garment: dict) -> float:
@@ -449,6 +477,17 @@ FLAW_DIRECTION = {"too_tight": "tight", "snug": "tight", "roomy": "loose", "too_
 # zone and in that direction. Half is a choice, not a measurement: one number to change
 # when evidence says so.
 TOLERATED_WEIGHT = 0.5
+
+# What a preference held as a constraint rules out, in the directions of FLAW_DIRECTION. A
+# relaxed or oversized fit rules out tight, a fitted or very fitted one loose, and a regular fit
+# both: it asks for neither.
+RULED_OUT = {
+    "very_fitted": frozenset({"loose"}),
+    "fitted": frozenset({"loose"}),
+    "regular": frozenset({"tight", "loose"}),
+    "relaxed": frozenset({"tight"}),
+    "oversized": frozenset({"tight"}),
+}
 
 
 def _same_category(ref: dict, garment: dict) -> bool:
@@ -617,6 +656,21 @@ def _cannot_be_let_out(lines: list[ExplanationLine], tolerated: dict[str, set[st
     )
 
 
+def _breaks_a_constraint(
+    lines: list[ExplanationLine], ruled_out: dict[str, frozenset[str]]
+) -> bool:
+    """Whether a size is too tight or too loose where the person has ruled that out.
+
+    Unlike in _clearly_wrong, a garment the person once kept despite that flaw does not excuse
+    it: the constraint is what the person says now, the kept garment what they accepted then.
+    """
+    return any(
+        line.assessment in ("too_tight", "too_loose")
+        and FLAW_DIRECTION[line.assessment] in ruled_out.get(line.zone, ())
+        for line in lines
+    )
+
+
 def _assess(ease: float, lo: float, hi: float, slack: float) -> str:
     if ease < lo - slack:
         return "too_tight"
@@ -660,6 +714,7 @@ def recommend(
         profile, garment, now
     )
     tolerated = _tolerances(profile, garment)
+    ruled_out = {m.zone: _ruled_out(profile, category, m.zone) for m in ZONE_MAPPINGS}
 
     caveats: list[str] = list(version_notes)
     improve_by: list[str] = []
@@ -811,8 +866,19 @@ def recommend(
     # the candidates and comes back among the alternatives with the reason. The scores weigh such
     # a zone heavily already, so this seldom changes which size wins. It matters when every size
     # is too tight there: the answer used to be the least tight of them, named with the confidence
-    # of one that fits.
-    unfit = [] if all_returned else [t for t in scored if _cannot_be_let_out(t[2], tolerated)]
+    # of one that fits. A size outside a constraint the person declared is held the same way, and
+    # comes back with a reason of its own, which names neither the zone nor the preference.
+    unfit = (
+        []
+        if all_returned
+        else [
+            t
+            for t in scored
+            if _cannot_be_let_out(t[2], tolerated) or _breaks_a_constraint(t[2], ruled_out)
+        ]
+    )
+    # The ones ruled out by the person's constraint alone, not by where they cannot be let out.
+    by_constraint = [t for t in unfit if not _cannot_be_let_out(t[2], tolerated)]
     nothing_fits = bool(unfit) and len(unfit) == len(scored)
     if unfit and not nothing_fits:
         scored = [t for t in scored if all(t is not u for u in unfit)]
@@ -970,13 +1036,24 @@ def recommend(
             "No size is named, deliberately."
         )
     if nothing_fits:
-        # The same, for sizes too tight where they cannot be let out, and the reason goes out at
-        # every level: without it a result_only answer reads as not knowing, when what is known
-        # is that nothing here fits.
+        # The same, for sizes too tight where they cannot be let out or outside a constraint the
+        # person declared, and the reason goes out at every level: without it a result_only
+        # answer reads as not knowing, when what is known is that nothing here fits. It names no
+        # zone and no preference.
+        if not by_constraint:
+            reason = "too tight where it cannot be let out"
+        elif len(by_constraint) == len(unfit):
+            reason = "outside a limit the person has set"
+        else:
+            reason = (
+                "either too tight where it cannot be let out or outside a limit the person "
+                "has set"
+            )
         caveats.append(
             ("Every other size" if rejected else "Every size")
-            + " of this garment is too tight where it cannot be let out. No size is named, "
-            "deliberately."
+            + " of this garment is "
+            + reason
+            + ". No size is named, deliberately."
         )
     if all_returned or nothing_fits:
         # The reason has just been given, and "not enough signal" would be false next to it.
@@ -1007,11 +1084,15 @@ def recommend(
         ]
         + [
             {
-                "size_label": lbl,
-                "score": round(sc, 2),
-                "note": "Too tight where it cannot be let out.",
+                "size_label": t[1],
+                "score": round(t[0], 2),
+                "note": (
+                    "Outside a limit the person has set."
+                    if any(t is u for u in by_constraint)
+                    else "Too tight where it cannot be let out."
+                ),
             }
-            for sc, lbl, _ in unfit
+            for t in unfit
         ],
         explanation=best_lines,
         based_on=based_on,
