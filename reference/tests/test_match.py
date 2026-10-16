@@ -1649,3 +1649,105 @@ def test_a_layer_in_never_share_leaves_its_counts_out(mature, shirt):
     chest = copy.deepcopy(mature)
     chest["disclosure_defaults"]["never_share"] = ["chest_circumference"]
     assert recommend(chest, shirt).to_json()["based_on"] == dict(counts, body_signals=4)
+
+
+def _said(out):
+    """Every sentence a serialised report says: caveats, suggestions and notes."""
+    return (
+        out["caveats"]
+        + out["improve_by"]
+        + [alt["note"] for alt in out.get("alternatives", []) if "note" in alt]
+        + [line["note"] for line in out.get("explanation", []) if "note" in line]
+    )
+
+
+def test_a_layer_in_never_share_is_not_told_through_the_reasoning(mature, cold, shirt):
+    """With the history in never_share and the 41 sent back, every report still said "Sizes
+    already returned for this exact garment were removed from the candidates: 41.", at
+    result_only too, and a constraint or measurements estimated from size labels were told the
+    same way. A caveat or a note about a layer the person listed whole does not leave, and a size
+    set aside for such a reason leaves the alternatives with it: its score, often the highest,
+    would say that it was set aside. The answer is the same. From explained up one sentence says that
+    part of the reasoning was kept back, and at result_only nothing, as for the zones."""
+    import copy
+
+    returned = copy.deepcopy(mature)
+    returned["history"].append(_returned(shirt, "41"))
+    every_size = copy.deepcopy(mature)
+    every_size["history"] += [_returned(shirt, size["size_label"]) for size in shirt["sizes"]]
+    broad = copy.deepcopy(mature)
+    broad["body"]["measurements"]["chest_circumference"]["value"] = 112
+    estimated = copy.deepcopy(mature)
+    for key in ("shoulder_width", "neck_circumference"):
+        estimated["body"]["measurements"][key]["source"] = "estimated_from_size_labels"
+    wide_neck = copy.deepcopy(mature)
+    wide_neck["body"]["measurements"]["neck_circumference"]["value"] = 46
+    wide_neck_returned = copy.deepcopy(wide_neck)
+    wide_neck_returned["history"].append(_returned(shirt, "42"))
+    wide_chest = copy.deepcopy(mature)
+    wide_chest["body"]["measurements"]["chest_circumference"]["value"] = 120
+    no_arm = copy.deepcopy(mature)
+    del no_arm["body"]["measurements"]["arm_length"]
+
+    cases = [
+        ("history", returned, "already returned"),
+        ("history", every_size, "already been returned"),
+        ("history", cold, "purchase"),
+        ("history", wide_neck_returned, "every other size"),
+        ("preferences", _constraint(broad, "chest", "regular"), "limit the person has set"),
+        ("preferences", _constraint(mature, "chest", "relaxed"), "limit the person has set"),
+        ("body", estimated, "estimated from size labels"),
+        ("body", wide_neck, "cannot be let out"),
+        ("body", _constraint(mature, "chest", "relaxed"), "limit the person has set"),
+        ("body", wide_chest, "not one that fits"),
+        ("body", no_arm, "no matching"),
+        ("body", cold, "profile has no measurements"),
+    ]
+    notes = {
+        "history": {"Already returned for this garment."},
+        "preferences": {"Outside a limit the person has set."},
+        "body": {"Outside a limit the person has set.", "Too tight where it cannot be let out."},
+    }
+    kept_back = "Some of the reasoning is not given here, at the person's request."
+    zones = "Some zones are not explained here, at the person's request."
+    for layer, profile, told in cases:
+        said = _said(recommend(profile, shirt, disclosure_level="full").to_json())
+        assert any(told in sentence.lower() for sentence in said), told
+        listed = copy.deepcopy(profile)
+        listed.setdefault("disclosure_defaults", {})["never_share"] = [layer]
+        for level in ("result_only", "explained", "scoped", "full"):
+            plain = recommend(profile, shirt, disclosure_level=level)
+            held = recommend(listed, shirt, disclosure_level=level)
+            assert (held.recommended_size, held.confidence) == (
+                plain.recommended_size,
+                plain.confidence,
+            ), (told, level)
+            plain_out, held_out = plain.to_json(), held.to_json()
+            assert not any(told in sentence.lower() for sentence in _said(held_out)), (told, level)
+            assert [alt["size_label"] for alt in held_out.get("alternatives", [])] == [
+                alt["size_label"]
+                for alt in plain_out.get("alternatives", [])
+                if alt.get("note") not in notes[layer]
+            ], (told, level)
+            assert (kept_back in held_out["caveats"]) == (level != "result_only"), (told, level)
+            assert kept_back not in plain_out["caveats"]
+            if layer != "body":
+                assert zones not in held_out["caveats"], (told, level)
+
+
+def test_a_history_kept_private_is_not_asked_for(mature, shirt):
+    """"Record how past garments actually fitted" was offered only when the history is empty, so
+    with the history in never_share its absence told the verifier that there is one. It is not
+    offered when the history is listed, whether it is empty or not."""
+    import copy
+
+    def asks(profile):
+        return any("past garments" in s for s in recommend(profile, shirt).to_json()["improve_by"])
+
+    empty = copy.deepcopy(mature)
+    empty["history"] = []
+    assert asks(empty) and not asks(mature)
+    for profile in (empty, mature):
+        listed = copy.deepcopy(profile)
+        listed["disclosure_defaults"]["never_share"] = ["history"]
+        assert not asks(listed)

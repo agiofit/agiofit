@@ -33,6 +33,13 @@ withheld at the person's request.
 MUST leave out the counts of a layer the person lists, `body`, `preferences` or `history`, rather
 than give them as zero: a zero would say that nothing of the kind was used.
 
+A report MUST NOT include a caveat, a note or a suggestion that speaks about a layer the person
+lists, and MUST leave out of its alternatives a size set aside for a reason that layer gives: with
+its score, the size would say that it was set aside. The answer is computed the same. From
+`explained` up the reference implementation says in `caveats` that part of the reasoning was kept
+back at the person's request; at `result_only` it says nothing, since that would only tell the
+verifier that the person keeps something to themselves.
+
 The intended architecture is that the *computation happens where the profile lives* — a vault, a
 wallet, or a fit provider the person chose — and only the result travels. A retailer does not need
 a chest measurement to sell a shirt. It needs a size.

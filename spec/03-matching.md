@@ -147,6 +147,11 @@ rules out tight, a fitted or very fitted one loose, and a regular fit both. A ga
 kept despite such a flaw does not excuse it: the constraint is what they say now. Inferred from
 history, or with no `strength` written, a preference is a taste, and only moves the ease band.
 
+Each of these reasons is kept back from a report when it speaks about a layer the person lists in
+`never_share` (`04-privacy.md`): the sizes are judged against the body, a constraint is a
+preference, and a size already returned is history. The answer stays the same, and the verifier is
+not told why.
+
 A consumer MUST NOT present a confidence from another implementation as comparable to its own.
 
 ## What an answer rests on

@@ -328,6 +328,9 @@ class MatchReport:
     # Body measurements under names this implementation does not know. Kept on the report and
     # named by to_json only where an explanation is sent.
     unknown_measurements: list[str] = field(default_factory=list)
+    # Sentences that speak about a layer the person listed whole in never_share: caveats, and
+    # notes on alternatives or explanation lines. Kept on the report and never serialised.
+    withheld_sentences: list[str] = field(default_factory=list)
 
     def to_json(self) -> dict:
         """Serialise at the declared disclosure level.
@@ -345,8 +348,16 @@ class MatchReport:
         A measurement under a name this implementation does not know is named, so that the person
         can find it, but only where an explanation is sent: at result_only the name would tell
         the verifier what the profile holds, and nothing more.
+
+        A layer the person listed whole in never_share is not told through what the report says
+        either. A caveat, or the note of an alternative or of an explanation line, that speaks
+        about it stays on the report, for the person, and an alternative goes with its note: its
+        score, often the highest, would say that it was set aside. From explained up one sentence
+        says that part of the reasoning was kept back; at result_only nothing, as for the zones.
         """
         level = _checked_level(self.disclosure_level, "This report")
+        held = set(self.withheld_sentences)
+        caveats = [caveat for caveat in self.caveats if caveat not in held]
         out = {
             "schema_version": SCHEMA_VERSION,
             "cut_profile_id": self.cut_profile_id,
@@ -356,16 +367,17 @@ class MatchReport:
             "confidence": round(self.confidence, 2),
             "correctable": True,
             "based_on": self.based_on,
-            "caveats": self.caveats,
+            "caveats": caveats,
             "improve_by": self.improve_by,
         }
         if level == "result_only":
             return out
-        out["alternatives"] = self.alternatives
+        alternatives = [alt for alt in self.alternatives if alt.get("note") not in held]
+        out["alternatives"] = alternatives
         numeric = level in ("scoped", "full")
         lines = []
         for line in self.explanation:
-            if line.zone in self.withheld_zones:
+            if line.zone in self.withheld_zones or line.note in held:
                 continue
             d = {k: v for k, v in asdict(line).items() if v is not None}
             if not numeric:
@@ -376,17 +388,20 @@ class MatchReport:
             lines.append(d)
         out["explanation"] = lines
         # Said only where an explanation is sent: at result_only there is nothing to withhold,
-        # and either sentence would only tell the verifier something about the profile.
+        # and any of these sentences would only tell the verifier something about the profile.
         told = []
-        if len(lines) < len(self.explanation):
+        if any(line.zone in self.withheld_zones for line in self.explanation):
             told.append("Some zones are not explained here, at the person's request.")
+        # A sentence is held back only once it is in the report, so any at all is one fewer.
+        if held:
+            told.append("Some of the reasoning is not given here, at the person's request.")
         if self.unknown_measurements:
             told.append(
                 "The profile has measurements under names this implementation does not know, "
                 "so they were not used: " + ", ".join(self.unknown_measurements) + "."
             )
         if told:
-            out["caveats"] = self.caveats + told
+            out["caveats"] = caveats + told
         return out
 
 
@@ -785,6 +800,19 @@ def recommend(
         now = now.replace(tzinfo=timezone.utc)
     disclosure_level = _disclosure_level(profile, disclosure_level)
     withheld_zones = _withheld_zones(profile)
+    # What the report says about a layer the person listed whole in never_share stays on the
+    # report, for the person, and to_json keeps it from the verifier. With the history listed,
+    # "Sizes already returned for this exact garment were removed from the candidates: 41."
+    # used to tell the shop, at every level, which size the person had sent back.
+    never = _never_shared(profile)
+    held_back: list[str] = []
+
+    def about(sentence: str, *layers: str) -> str:
+        """The sentence, held back from the verifier if it speaks about a layer kept private."""
+        if never.intersection(layers):
+            held_back.append(sentence)
+        return sentence
+
     category = garment.get("category", "")
     flat = garment.get("measurement_method") == "flat_laid"
     crit = critical_zones(category, garment)
@@ -997,7 +1025,11 @@ def recommend(
         nothing_to_compare = (
             "No zone could be compared: this garment publishes no measurements."
             if not garment_has_measurements
-            else "No zone could be compared: the profile has no measurements this garment can be matched against."
+            else about(
+                "No zone could be compared: the profile has no measurements this garment can be "
+                "matched against.",
+                "body",
+            )
         )
         return MatchReport(
             cut_profile_id=garment.get("cut_profile_id", ""),
@@ -1005,7 +1037,8 @@ def recommend(
             confidence=conf,
             disclosure_level=disclosure_level,
             explanation=[
-                ExplanationLine(zone="overall", assessment="unknown", note=n) for n in notes
+                ExplanationLine(zone="overall", assessment="unknown", note=about(n, "history"))
+                for n in notes
             ],
             # The answer rests on the purchases it was derived from, all of the garment's brand:
             # those of other brands are refused here, and nothing was compared.
@@ -1019,7 +1052,7 @@ def recommend(
             ),
             caveats=(
                 [nothing_to_compare]
-                + (["Answer derived from past purchases alone."] if label else [])
+                + ([about("Answer derived from past purchases alone.", "history")] if label else [])
                 # Explanation is withheld at result_only, so a reason that lives only
                 # there is a reason the reader never gets. With no size named, the notes
                 # say why the history could not be used; with one named, they count the
@@ -1031,6 +1064,7 @@ def recommend(
             computed_at=computed_at,
             withheld_zones=withheld_zones,
             unknown_measurements=unknown_measurements,
+            withheld_sentences=held_back,
         )
 
     best_score, best_label, best_lines = scored[0]
@@ -1052,21 +1086,28 @@ def recommend(
     if confidence > ceiling:
         confidence = ceiling
         caveats.append(
-            "Some of the measurements used were estimated from size labels, so confidence is "
-            "capped as it is for an answer drawn from purchase history alone."
+            about(
+                "Some of the measurements used were estimated from size labels, so confidence is "
+                "capped as it is for an answer drawn from purchase history alone.",
+                "body",
+            )
         )
 
     # An answer is held to its own explanation. A size named while the explanation calls it too
     # tight or too loose somewhere used to come with the confidence of one that fits: for a
     # 120 cm chest the answer was a 42 at 0.80, a shirt with no ease left there. It is still
     # named, as the closest there is, but no surer than a cold start, and the person is told at
-    # every level, without the zone, which only the explanation names.
+    # every level, without the zone, which only the explanation names, unless they keep the body
+    # to themselves.
     misfits = [] if (all_returned or nothing_fits) else _clearly_wrong(best_lines, tolerated)
     if misfits:
         confidence = min(confidence, COLD_START_CEILING)
         caveats.append(
-            "The recommended size is clearly too tight or too loose somewhere: it is the closest "
-            "size, not one that fits."
+            about(
+                "The recommended size is clearly too tight or too loose somewhere: it is the "
+                "closest size, not one that fits.",
+                "body",
+            )
         )
 
     if fallback_zones:
@@ -1119,28 +1160,42 @@ def recommend(
             + "."
         )
     if any(line.assessment == "unknown" for line in best_lines):
-        caveats.append("Some zones could not be evaluated because the profile has no matching measurement.")
+        caveats.append(
+            about(
+                "Some zones could not be evaluated because the profile has no matching "
+                "measurement.",
+                "body",
+            )
+        )
     if confidence < 0.4:
         caveats.append("Low confidence: treat this as a starting point, not an answer.")
 
     if rejected and not all_returned:
         caveats.append(
-            "Sizes already returned for this exact garment were removed from the "
-            "candidates: " + ", ".join(sorted(lbl for _, lbl, _ in rejected)) + "."
+            about(
+                "Sizes already returned for this exact garment were removed from the "
+                "candidates: " + ", ".join(sorted(lbl for _, lbl, _ in rejected)) + ".",
+                "history",
+            )
         )
     if all_returned:
         # Every size on offer has already come back. Naming one anyway would be
         # worse than naming none, and the person is owed the reason rather than
         # a silent shrug.
         caveats.append(
-            "Every size of this garment has already been returned by this person. "
-            "No size is named, deliberately."
+            about(
+                "Every size of this garment has already been returned by this person. "
+                "No size is named, deliberately.",
+                "history",
+            )
         )
     if nothing_fits:
         # The same, for sizes too tight where they cannot be let out or outside a constraint the
         # person declared, and the reason goes out at every level: without it a result_only
         # answer reads as not knowing, when what is known is that nothing here fits. It names no
-        # zone and no preference.
+        # zone and no preference, and it is held back when it speaks about a layer the person
+        # keeps to themselves: the sizes are judged against the body, a constraint is a
+        # preference, and "every other size" says that some came back.
         if not by_constraint:
             reason = "too tight where it cannot be let out"
         elif len(by_constraint) == len(unfit):
@@ -1151,10 +1206,15 @@ def recommend(
                 "has set"
             )
         caveats.append(
-            ("Every other size" if rejected else "Every size")
-            + " of this garment is "
-            + reason
-            + ". No size is named, deliberately."
+            about(
+                ("Every other size" if rejected else "Every size")
+                + " of this garment is "
+                + reason
+                + ". No size is named, deliberately.",
+                "body",
+                *(["preferences"] if by_constraint else []),
+                *(["history"] if rejected else []),
+            )
         )
     if all_returned or nothing_fits:
         # The reason has just been given, and "not enough signal" would be false next to it.
@@ -1179,7 +1239,7 @@ def recommend(
             {
                 "size_label": lbl,
                 "score": round(sc, 2),
-                "note": "Already returned for this garment.",
+                "note": about("Already returned for this garment.", "history"),
             }
             for sc, lbl, _ in (rejected if not all_returned else [])
         ]
@@ -1188,9 +1248,9 @@ def recommend(
                 "size_label": t[1],
                 "score": round(t[0], 2),
                 "note": (
-                    "Outside a limit the person has set."
+                    about("Outside a limit the person has set.", "body", "preferences")
                     if any(t is u for u in by_constraint)
-                    else "Too tight where it cannot be let out."
+                    else about("Too tight where it cannot be let out.", "body")
                 ),
             }
             for t in unfit
@@ -1209,6 +1269,7 @@ def recommend(
         computed_at=computed_at,
         withheld_zones=withheld_zones,
         unknown_measurements=unknown_measurements,
+        withheld_sentences=held_back,
     )
 
 
@@ -1357,7 +1418,9 @@ def _improvements(body: dict, profile: dict, garment: dict) -> list[str]:
     It travels at every level, result_only included, so it never names a measurement the person
     listed in never_share, and none at all when the whole body layer is listed. "Re-measure with
     a tape: hip_circumference" told the verifier that the profile holds the hips the person had
-    kept to themselves, and that they were taken from memory.
+    kept to themselves, and that they were taken from memory. Nor does it ask for a history the
+    person listed: offered only when the history is empty, the suggestion told the verifier, by
+    its absence, that there is one.
     """
     out: list[str] = []
     never = _never_shared(profile)
@@ -1376,7 +1439,7 @@ def _improvements(body: dict, profile: dict, garment: dict) -> list[str]:
     ]
     if weak:
         out.append(f"Re-measure with a tape: {', '.join(sorted(weak)[:3])}.")
-    if not profile.get("history"):
+    if not profile.get("history") and "history" not in never:
         out.append("Record how past garments actually fitted — it is the strongest signal available.")
     return out
 

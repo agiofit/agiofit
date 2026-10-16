@@ -93,3 +93,5 @@ centimetres without inventing them.
 
 `based_on` counts what the answer used, not what the profile holds. A layer the person lists in
 `never_share` leaves its counts out, and a measurement listed there is not counted.
+Nor is a layer the person lists there told through the reasoning: no caveat, note or suggestion
+about it leaves, and a size set aside for its sake leaves the alternatives.
