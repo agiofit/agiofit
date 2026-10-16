@@ -496,6 +496,18 @@ def _label_key(label: object) -> str | None:
     return " ".join(str(label).split()).casefold()
 
 
+def _reference_key(reference: object) -> str | None:
+    """A reference to a Cut Profile as it is meant, to join a past purchase to this garment.
+
+    A size sent back and recorded against an identifier with a space at the end pointed at no
+    document, and the size was recommended again. Spaces around an identifier do not make another
+    one. Its capitals do, because an identifier may be a URL or a key where they count, and
+    reading past them would join two documents. An empty reference is no reference.
+    """
+    key = reference.strip() if isinstance(reference, str) else ""
+    return key or None
+
+
 RETURNED_FOR_SIZE = {
     "returned_too_small",
     "returned_too_large",
@@ -512,15 +524,16 @@ def _sizes_already_returned(profile: dict, garment: dict) -> set[str]:
     similar garment, which is a weaker claim and already handled by the learned
     offset. "kept" and "returned_other" are left out because neither says the
     size was wrong. The labels come back as _label_key reads them, and the garment's
-    are read the same way before they are compared.
+    are read the same way before they are compared; the identifiers are compared as
+    _reference_key reads them.
     """
-    cut_id = garment.get("cut_profile_id")
+    cut_id = _reference_key(garment.get("cut_profile_id"))
     if not cut_id:
         return set()
     labels = set()
     for entry in profile.get("history", []):
         ref = entry.get("garment_ref", {})
-        if ref.get("cut_profile_id") != cut_id:
+        if _reference_key(ref.get("cut_profile_id")) != cut_id:
             continue
         if entry.get("outcome") in RETURNED_FOR_SIZE:
             labels.add(_label_key(ref.get("size_label")))
@@ -585,8 +598,9 @@ def _history(profile: dict) -> list[dict]:
     Entries carry no identifier, so the same event written twice, by an import run again or by the
     person and the shop recording one purchase in the same terms, used to count twice, and the
     answer looked surer for reading the same thing again. Who wrote an entry and which import
-    brought it do not make it another event; a date is compared as a moment, not as text, and a
-    size label as _label_key reads it; the order of a list is not part of what it says, and an
+    brought it do not make it another event; a date is compared as a moment, not as text, a size
+    label as _label_key reads it and a reference to a Cut Profile as _reference_key does; the
+    order of a list is not part of what it says, and an
     empty list says no more than a missing one. Entries that differ in anything else stay two:
     deciding they are one would be guessing.
     """
@@ -600,6 +614,10 @@ def _history(profile: dict) -> list[dict]:
         ref = event.get("garment_ref")
         if isinstance(ref, dict) and "size_label" in ref:
             event["garment_ref"] = dict(ref, size_label=_label_key(ref["size_label"]))
+        if isinstance(ref, dict) and "cut_profile_id" in ref:
+            event["garment_ref"] = dict(
+                event["garment_ref"], cut_profile_id=_reference_key(ref["cut_profile_id"])
+            )
         for name in ("zone_feedback", "kept_despite"):
             if event.get(name):
                 event[name] = sorted(event[name], key=lambda v: json.dumps(v, sort_keys=True))

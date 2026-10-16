@@ -66,6 +66,9 @@ history that has aged as a whole leaves the bands where they were and makes the 
 A size label is read the way a person reads it: spaces and capitals do not make another label,
 and a size system written inside one is not guessed.
 
+A reference to a Cut Profile is read without the spaces around it. Its capitals count, since an
+identifier may be a URL.
+
 A measurement under a name this implementation does not know is named from `explained` up, so
 the person can find it.
 

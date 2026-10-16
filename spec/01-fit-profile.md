@@ -82,6 +82,10 @@ a wrong category would carry a shirt's lesson over to a pair of trousers.
 producers SHOULD write the size alone, as its size system names it, with the system in
 `size_system`: `41` with `IT`, not `IT 41`.
 
+`garment_ref.cut_profile_id` joins a past purchase to one document exactly (`02-cut-profile.md`),
+so producers SHOULD write it exactly as the Cut Profile does, and leave it out when there was none:
+an empty reference points at no document.
+
 Entries carry no identifier in this version (`05-open-questions.md`), so an entry written twice
 cannot be told apart from two events that look the same. Producers, importers above all, SHOULD
 NOT add an entry the history already holds. An entry that turns out to be wrong is corrected where

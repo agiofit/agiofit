@@ -1516,3 +1516,45 @@ def test_morphology_is_descriptive_here(mature, shirt):
         profile = json.loads((EXAMPLES / name).read_text())
         for trait in ((profile.get("body") or {}).get("morphology") or {}).values():
             assert trait.get("source") in judged, name
+
+
+def test_a_reference_to_a_cut_profile_is_read_without_the_spaces_around_it(mature, shirt):
+    """A size sent back and recorded against "sartoria-esempio:OXF-CLASSIC:2026 ", with a space
+    at the end, used to point at no document, and the size came back recommended. Spaces around
+    an identifier do not make another one. Its capitals do, since an identifier may be a URL or a
+    key where they count, and an empty reference points at nothing. The same return written
+    twice, once with the space, is one event."""
+    import copy
+
+    first = recommend(mature, shirt).to_json()["recommended_size"]
+    cut_id = shirt["cut_profile_id"]
+
+    def returned_as(*references):
+        profile = copy.deepcopy(mature)
+        for reference in references:
+            entry = _returned(shirt, first)
+            entry["garment_ref"].update(cut_profile_id=reference, category="shirts")
+            profile["history"].append(entry)
+        return recommend(profile, shirt, disclosure_level="explained").to_json()
+
+    def noted_as_returned(report):
+        return {
+            alt["size_label"]
+            for alt in report["alternatives"]
+            if alt.get("note") == "Already returned for this garment."
+        }
+
+    exact = returned_as(cut_id)
+    assert noted_as_returned(exact) == {first}
+    assert returned_as(cut_id + " ") == exact
+    assert returned_as(" " + cut_id + " ") == exact
+    for elsewhere in (cut_id.upper(), ""):
+        assert noted_as_returned(returned_as(elsewhere)) == set(), elsewhere
+    assert returned_as(cut_id, cut_id + " ") == exact
+
+    # The garment's own identifier is read the same way.
+    spaced = dict(copy.deepcopy(shirt), cut_profile_id=cut_id + " ")
+    history = copy.deepcopy(mature)
+    history["history"].append(_returned(shirt, first))
+    report = recommend(history, spaced, disclosure_level="explained").to_json()
+    assert noted_as_returned(report) == {first}
