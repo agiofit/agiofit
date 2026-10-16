@@ -34,6 +34,13 @@ for the person, outside the profile; nothing in this format requires keeping the
 shoulders, a long torso. It is deliberately qualitative: a five-point scale a person can answer
 honestly beats a measurement they cannot take correctly.
 
+The reference implementation does not use `morphology`. There is no defensible way to turn "above
+average" into centimetres of ease, and a guess would move answers by amounts nobody measured, so a
+trait stays in the profile for a consumer that can use it. A trait carries its `source` like every
+other value (`00-overview.md`), although the schema does not require it there. `tape_measured` and
+`estimated_from_size_labels` say nothing about how a trait was judged, and producers SHOULD NOT use
+them for one.
+
 ## Layer 2 — Preferences
 
 What the person *wants*, per `category` and `zone`, on a five-point scale shared with the garment's

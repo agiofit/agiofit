@@ -84,3 +84,6 @@ cannot be read stops the answer instead of counting as today's.
 
 Each measurement is read in its own unit. The profile's `units` is the unit the person prefers to
 see, and changes nothing here.
+
+`morphology` is descriptive here: no trait moves an answer, because none can be turned into
+centimetres without inventing them.

@@ -1492,3 +1492,27 @@ def test_the_unit_a_person_prefers_to_see_changes_nothing(mature, shirt):
     for level in ("result_only", "explained", "scoped", "full"):
         plain = recommend(mature, shirt, disclosure_level=level).to_json()
         assert recommend(shown_in_inches, shirt, disclosure_level=level).to_json() == plain, level
+
+
+def test_morphology_is_descriptive_here(mature, shirt):
+    """morphology says what measurements miss, sloped shoulders or a long torso, but there is no
+    defensible way to turn "above average" into centimetres of ease, and this implementation does
+    not try: the most extreme traits change nothing, at any level. A trait still carries its
+    source, as every value does, and the examples use only sources that can say how a trait was
+    judged."""
+    import copy
+
+    extreme = copy.deepcopy(mature)
+    extreme["body"]["morphology"] = {
+        trait: {"value": "much_above_average", "source": "self_reported"}
+        for trait in ("shoulder_slope", "torso_length", "posture", "limb_length")
+    }
+    for level in ("result_only", "explained", "scoped", "full"):
+        plain = recommend(mature, shirt, disclosure_level=level).to_json()
+        assert recommend(extreme, shirt, disclosure_level=level).to_json() == plain, level
+
+    judged = {"self_reported", "scan_3d", "inferred_from_history", "imported_from_retailer"}
+    for name in ("profile-mature.json", "profile-cold-start.json"):
+        profile = json.loads((EXAMPLES / name).read_text())
+        for trait in ((profile.get("body") or {}).get("morphology") or {}).values():
+            assert trait.get("source") in judged, name
