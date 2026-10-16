@@ -90,3 +90,6 @@ see, and changes nothing here.
 
 `morphology` is descriptive here: no trait moves an answer, because none can be turned into
 centimetres without inventing them.
+
+`based_on` counts what the answer used, not what the profile holds. A layer the person lists in
+`never_share` leaves its counts out, and a measurement listed there is not counted.

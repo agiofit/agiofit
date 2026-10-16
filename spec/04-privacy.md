@@ -29,6 +29,10 @@ list governs is what leaves it. The reference implementation leaves such a zone 
 explanation altogether and, from `explained` up, says in `caveats` that some zones were
 withheld at the person's request.
 
+`based_on` (`03-matching.md`) MUST NOT include a measurement the person lists in its counts, and
+MUST leave out the counts of a layer the person lists, `body`, `preferences` or `history`, rather
+than give them as zero: a zero would say that nothing of the kind was used.
+
 The intended architecture is that the *computation happens where the profile lives* — a vault, a
 wallet, or a fit provider the person chose — and only the result travels. A retailer does not need
 a chest measurement to sell a shirt. It needs a size.

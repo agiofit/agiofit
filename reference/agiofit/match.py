@@ -828,6 +828,11 @@ def recommend(
     unused_ease_zones = sorted(set(declared_ease) - MAPPED_ZONES)
 
     scored: list[tuple[float, str, list[ExplanationLine]]] = []
+    # What the answer rests on, for based_on: the measurements compared, the preferences that
+    # decided a zone compared, and whether what the history taught moved one.
+    compared: set[str] = set()
+    deciding: list[dict] = []
+    offset_applied = False
 
     for size in garment.get("sizes", []):
         label = size["size_label"]
@@ -865,6 +870,13 @@ def recommend(
                     )
                 )
                 continue
+
+            compared.add(mapping.body_key)
+            preference = _deciding_preference(profile, category, mapping.zone)
+            if preference is not None and all(preference is not p for p in deciding):
+                deciding.append(preference)
+            if abs(history_offsets.get(mapping.zone, 0.0)) > 0.01:
+                offset_applied = True
 
             g_cm = _cm(gm["value"], gm["unit"])
             if flat and mapping.doubles_when_flat_laid:
@@ -971,18 +983,11 @@ def recommend(
         scored = [t for t in scored if all(t is not u for u in unfit)]
 
     computed_at = now.isoformat(timespec="seconds")
-    based_on = {
-        "body_signals": len(body),
-        "preference_signals": len(profile.get("preferences", [])),
-        "history_signals": history_n,
-        "brand_specific_history_signals": brand_history_n,
-        "learned_offset_applied": any(abs(o) > 0.01 for o in history_offsets.values()),
-    }
 
     if not scored:
         # Cold start: nothing to compare numerically. Fall back on what the person actually wore.
         # This path is the whole argument for the history layer — it works with zero measurements.
-        label, conf, notes = _history_only_size(profile, garment)
+        label, conf, notes, purchases = _history_only_size(profile, garment)
         # Which side is empty decides who is being told to do something. Blaming the
         # profile when the garment carries no measurements sends the one person who
         # cannot fix it off to measure themselves again.
@@ -1002,7 +1007,16 @@ def recommend(
             explanation=[
                 ExplanationLine(zone="overall", assessment="unknown", note=n) for n in notes
             ],
-            based_on=based_on,
+            # The answer rests on the purchases it was derived from, all of the garment's brand:
+            # those of other brands are refused here, and nothing was compared.
+            based_on=_based_on(
+                profile,
+                compared=set(),
+                preferences=0,
+                history=purchases,
+                same_brand=purchases if garment.get("brand") else 0,
+                offset_applied=False,
+            ),
             caveats=(
                 [nothing_to_compare]
                 + (["Answer derived from past purchases alone."] if label else [])
@@ -1182,7 +1196,14 @@ def recommend(
             for t in unfit
         ],
         explanation=best_lines,
-        based_on=based_on,
+        based_on=_based_on(
+            profile,
+            compared=compared,
+            preferences=len(deciding),
+            history=history_n,
+            same_brand=brand_history_n,
+            offset_applied=offset_applied,
+        ),
         caveats=caveats,
         improve_by=_improvements(body, profile, garment),
         computed_at=computed_at,
@@ -1194,6 +1215,31 @@ def recommend(
 def _never_shared(profile: dict) -> set[str]:
     """What the person listed in never_share: measurement keys, or whole layers."""
     return set((profile.get("disclosure_defaults") or {}).get("never_share") or [])
+
+
+def _based_on(
+    profile: dict, *, compared: set[str], preferences: int, history: int, same_brand: int,
+    offset_applied: bool
+) -> dict:
+    """What an answer rests on, in counts: what it used, not what the profile holds.
+
+    The counts used to be of the whole profile: seven measurements and four preferences for a
+    shirt compared on five and decided by two, as if the inseam, or a preference about trousers,
+    had a part in it. At every level, that told the verifier how full the profile is, and not what
+    the answer rests on. A measurement the person listed in never_share is not counted, and a
+    layer listed whole leaves its counts out: a zero would say that nothing of the kind was used.
+    """
+    never = _never_shared(profile)
+    based_on: dict = {}
+    if "body" not in never:
+        based_on["body_signals"] = len(compared - never)
+    if "preferences" not in never:
+        based_on["preference_signals"] = preferences
+    if "history" not in never:
+        based_on["history_signals"] = history
+        based_on["brand_specific_history_signals"] = same_brand
+        based_on["learned_offset_applied"] = offset_applied
+    return based_on
 
 
 def _unknown_measurements(profile: dict, body: dict) -> list[str]:
@@ -1381,13 +1427,14 @@ def _labels_by_size(garment: dict) -> list[str]:
     return [label for _, label in placed]
 
 
-def _history_only_size(profile: dict, garment: dict) -> tuple[str | None, float, list[str]]:
+def _history_only_size(profile: dict, garment: dict) -> tuple[str | None, float, list[str], int]:
     """Guess a size from past outcomes alone, with no body measurements at all.
 
     Only same-brand history is trusted here: a size label from one brand says almost nothing about
     another brand's label, and pretending otherwise is how size charts got their reputation. The
     latest purchase counts most, found by its moment: ordered as text, a date written in another
-    time zone could pass for the latest when it was not.
+    time zone could pass for the latest when it was not. The number of purchases the size was
+    derived from comes back with it: they are what the answer rests on, and no others.
     """
     labels = _labels_by_size(garment)
     # Where each label stands, as _label_key reads it: the first, if two read alike.
@@ -1431,7 +1478,7 @@ def _history_only_size(profile: dict, garment: dict) -> tuple[str | None, float,
                 "History for this brand exists but is labelled in a different size "
                 "system, so it was not used."
             )
-        return None, 0.0, notes
+        return None, 0.0, notes, 0
 
     candidates.sort(reverse=True)  # most recent first
     scores: dict[str, float] = {}
@@ -1445,4 +1492,4 @@ def _history_only_size(profile: dict, garment: dict) -> tuple[str | None, float,
     confidence *= 0.6 + 0.4 * agreement
     return best, round(confidence, 3), [
         f"Derived from {len(candidates)} past {brand} purchase(s) in this category, no measurements used."
-    ]
+    ], len(candidates)

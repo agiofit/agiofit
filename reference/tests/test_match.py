@@ -1558,3 +1558,94 @@ def test_a_reference_to_a_cut_profile_is_read_without_the_spaces_around_it(matur
     history["history"].append(_returned(shirt, first))
     report = recommend(history, spaced, disclosure_level="explained").to_json()
     assert noted_as_returned(report) == {first}
+
+
+def test_based_on_counts_what_the_answer_used(mature, cold, shirt):
+    """based_on counted what the profile holds: seven measurements and four preferences for a
+    shirt compared on five and decided by two, as if the inseam, or a preference about trousers,
+    had a part in it. At every level, that told the verifier how full the profile is. It counts
+    what the answer rests on: the measurements compared, the preferences that decided a zone
+    compared, the purchases read, and whether what they taught moved a zone compared. A cold
+    start rests on the purchases of this brand it was derived from, and on nothing else."""
+    import copy
+
+    assert recommend(mature, shirt).to_json()["based_on"] == {
+        "body_signals": 5,
+        "preference_signals": 2,
+        "history_signals": 3,
+        "brand_specific_history_signals": 3,
+        "learned_offset_applied": True,
+    }
+
+    # A preference that decides no zone is not counted: the declared one decides overall.
+    undecided = copy.deepcopy(mature)
+    overall = next(
+        p for p in undecided["preferences"] if (p["category"], p["zone"]) == ("shirts", "overall")
+    )
+    undecided["preferences"].append(
+        dict(overall, preference="relaxed", source="inferred_from_history")
+    )
+    assert recommend(undecided, shirt).to_json()["based_on"]["preference_signals"] == 2
+
+    # Without the shoulders measured, neither the preference about them nor what the history
+    # taught about them is used.
+    unmeasured = copy.deepcopy(mature)
+    del unmeasured["body"]["measurements"]["shoulder_width"]
+    assert recommend(unmeasured, shirt).to_json()["based_on"] == {
+        "body_signals": 4,
+        "preference_signals": 1,
+        "history_signals": 3,
+        "brand_specific_history_signals": 3,
+        "learned_offset_applied": False,
+    }
+
+    alone = {
+        "body_signals": 0,
+        "preference_signals": 0,
+        "history_signals": 1,
+        "brand_specific_history_signals": 1,
+        "learned_offset_applied": False,
+    }
+    assert recommend(cold, shirt).to_json()["based_on"] == alone
+    # A return to another brand, and a purchase of this one labelled in another size system,
+    # are not what the answer was derived from.
+    elsewhere = copy.deepcopy(cold)
+    other_brand = copy.deepcopy(cold["history"][0])
+    other_brand["garment_ref"]["brand"] = "SomeoneElse"
+    other_brand["outcome"] = "returned_too_small"
+    other_system = copy.deepcopy(cold["history"][0])
+    other_system["garment_ref"].update(size_label="16", size_system="US")
+    elsewhere["history"] += [other_brand, other_system]
+    assert recommend(elsewhere, shirt).to_json()["based_on"] == alone
+
+
+def test_a_layer_in_never_share_leaves_its_counts_out(mature, shirt):
+    """With history in never_share, every report still told the verifier how many purchases
+    the person had made in this category, and how many of this brand. A layer the person lists
+    leaves its counts out of based_on, at every level, rather than give them as zero, which
+    would say that nothing of the kind was used, and a measurement listed alone is not counted.
+    The answer is computed the same: what the list governs is what leaves."""
+    import copy
+
+    plain = recommend(mature, shirt)
+    counts = plain.to_json()["based_on"]
+    layers = {
+        "body": {"body_signals"},
+        "preferences": {"preference_signals"},
+        "history": {"history_signals", "brand_specific_history_signals", "learned_offset_applied"},
+    }
+    for layer, keys in layers.items():
+        profile = copy.deepcopy(mature)
+        profile["disclosure_defaults"]["never_share"] = [layer]
+        for level in ("result_only", "explained", "scoped", "full"):
+            report = recommend(profile, shirt, disclosure_level=level)
+            assert (report.recommended_size, report.confidence) == (
+                plain.recommended_size,
+                plain.confidence,
+            )
+            left = {key: value for key, value in counts.items() if key not in keys}
+            assert report.to_json()["based_on"] == left, (layer, level)
+
+    chest = copy.deepcopy(mature)
+    chest["disclosure_defaults"]["never_share"] = ["chest_circumference"]
+    assert recommend(chest, shirt).to_json()["based_on"] == dict(counts, body_signals=4)

@@ -148,3 +148,14 @@ kept despite such a flaw does not excuse it: the constraint is what they say now
 history, or with no `strength` written, a preference is a taste, and only moves the ease band.
 
 A consumer MUST NOT present a confidence from another implementation as comparable to its own.
+
+## What an answer rests on
+
+`based_on` counts what an answer used, not what the profile holds. A count of the profile would
+tell the verifier how full it is, at every level, and not what the answer rests on: for a shirt
+compared on five measurements and decided by two preferences, the example profile holds seven and
+four, among them the inseam and a preference about trousers. The reference implementation counts
+the body measurements a garment was compared on, the preferences that decided a zone it compared,
+and the past purchases it read, each event once. A cold start rests on the purchases it
+was derived from, all of the garment's brand, and counts only those. Nothing the person lists in
+`never_share` is counted (`04-privacy.md`).
