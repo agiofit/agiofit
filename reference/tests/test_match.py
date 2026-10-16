@@ -1477,3 +1477,18 @@ def test_a_date_that_cannot_be_read_stops_the_answer(mature, shirt):
 
     unread = dict(copy.deepcopy(mature), updated_at="yesterday")
     assert recommend(unread, shirt).confidence == recommend(mature, shirt).confidence
+
+
+def test_the_unit_a_person_prefers_to_see_changes_nothing(mature, shirt):
+    """units is the unit the person prefers to see, not the one the values are written in: each
+    measurement carries its own. A profile whose units say inches while its measurements are in
+    centimetres is valid, and a consumer that trusted units would read a 100 cm chest as 254 cm.
+    Here it changes nothing, at any level, and nor does units.mass, which names a unit for
+    nothing."""
+    import copy
+
+    shown_in_inches = copy.deepcopy(mature)
+    shown_in_inches["units"] = {"length": "in", "mass": "lb"}
+    for level in ("result_only", "explained", "scoped", "full"):
+        plain = recommend(mature, shirt, disclosure_level=level).to_json()
+        assert recommend(shown_in_inches, shirt, disclosure_level=level).to_json() == plain, level

@@ -8,6 +8,13 @@ Three independent layers. Each is optional; a profile with only one layer is val
 
 Measurements, each with `value`, `unit`, `source`, `observed_at` and ideally `tolerance`.
 
+`units`, at the top of the profile, is the unit the person prefers to see measurements in. It says
+nothing about how a value is written: each measurement carries its own `unit`, and a consumer MUST
+read it in that unit, never in `units`. Read in inches, the 100 cm chest of the example profile
+would be 254 cm. A profile whose `units` says inches while its measurements are in centimetres is
+valid, and its measurements are in centimetres. No value in this version has a mass, so
+`units.mass` names a unit for nothing, and producers SHOULD leave it out.
+
 `tolerance` carries most of the honesty in this specification. A waist typed in from memory and one
 measured with a tape are both numbers; only the tolerance distinguishes them, and the matcher uses
 it to widen or narrow its judgement.
