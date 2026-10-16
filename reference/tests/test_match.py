@@ -1,6 +1,8 @@
 import json
+import re
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import pytest
 
@@ -9,6 +11,7 @@ from agiofit import (
     load_cut_profile,
     recommend,
     UnknownDisclosureLevel,
+    UnreadableDate,
     UnsupportedSchemaVersion,
 )
 
@@ -44,19 +47,75 @@ def fixed_clock(monkeypatch):
 
 # --------------------------------------------------------------------- schema conformance
 
+# A date-time as RFC 3339 writes it, for the format check below: written here rather than taken
+# from the implementation, so that the two can disagree.
+RFC3339_DATE_TIME = re.compile(
+    r"\d{4}-\d{2}-\d{2}[Tt]\d{2}:\d{2}:\d{2}(\.\d+)?([Zz]|[+-]\d{2}:\d{2})"
+)
+
+
+def _formats(jsonschema):
+    """A format checker that asserts, as spec/00 asks of a validator. jsonschema checks uuid on
+    its own, and date-time and uri only with packages this suite does not install, so those two
+    are checked here."""
+    checker = jsonschema.FormatChecker()
+
+    @checker.checks("date-time")
+    def date_time(value):
+        return not isinstance(value, str) or RFC3339_DATE_TIME.fullmatch(value) is not None
+
+    @checker.checks("uri", raises=ValueError)
+    def uri(value):
+        return not isinstance(value, str) or bool(urlsplit(value).scheme)
+
+    return checker
+
+
 def test_examples_validate_against_schemas():
     jsonschema = pytest.importorskip("jsonschema")
+    formats = _formats(jsonschema)
     profile_schema = json.loads((SCHEMAS / "fit-profile.schema.json").read_text())
     cut_schema = json.loads((SCHEMAS / "cut-profile.schema.json").read_text())
     report_schema = json.loads((SCHEMAS / "match-report.schema.json").read_text())
 
     for name in ("profile-mature.json", "profile-cold-start.json"):
-        jsonschema.validate(json.loads((EXAMPLES / name).read_text()), profile_schema)
-    jsonschema.validate(json.loads((EXAMPLES / "cut-shirt.json").read_text()), cut_schema)
+        profile = json.loads((EXAMPLES / name).read_text())
+        jsonschema.validate(profile, profile_schema, format_checker=formats)
+    garment = json.loads((EXAMPLES / "cut-shirt.json").read_text())
+    jsonschema.validate(garment, cut_schema, format_checker=formats)
 
     profile = load_fit_profile(EXAMPLES / "profile-mature.json")
     garment = load_cut_profile(EXAMPLES / "cut-shirt.json")
-    jsonschema.validate(recommend(profile, garment).to_json(), report_schema)
+    report = recommend(profile, garment).to_json()
+    jsonschema.validate(report, report_schema, format_checker=formats)
+
+
+def test_a_format_is_checked_where_nothing_here_reads_it():
+    """JSON Schema 2020-12 reads format as a note unless a validator is told otherwise, so a
+    profile_id written as an email address passed, though the schema asks for a uuid and the
+    specification forbids deriving one from an email, and so did an updated_at of "yesterday".
+    This implementation reads neither and does not police them: the suite validates with
+    formats asserted, as spec/00 asks a validator to."""
+    import copy
+
+    jsonschema = pytest.importorskip("jsonschema")
+    formats = _formats(jsonschema)
+    profile_schema = json.loads((SCHEMAS / "fit-profile.schema.json").read_text())
+    cut_schema = json.loads((SCHEMAS / "cut-profile.schema.json").read_text())
+
+    profile = json.loads((EXAMPLES / "profile-mature.json").read_text())
+    for field, value in (("profile_id", "mario.rossi@example.com"), ("updated_at", "yesterday")):
+        wrong = dict(profile, **{field: value})
+        jsonschema.validate(wrong, profile_schema)
+        with pytest.raises(jsonschema.ValidationError):
+            jsonschema.validate(wrong, profile_schema, format_checker=formats)
+
+    garment = json.loads((EXAMPLES / "cut-shirt.json").read_text())
+    for field, value in (("published_at", "February 2026"), ("source_url", "not a link")):
+        wrong = copy.deepcopy(garment)
+        wrong["provenance"][field] = value
+        with pytest.raises(jsonschema.ValidationError):
+            jsonschema.validate(wrong, cut_schema, format_checker=formats)
 
 
 # --------------------------------------------------------------------- core behaviour
@@ -1363,3 +1422,58 @@ def test_a_constraint_rules_out_what_its_preference_asks_against(mature, shirt):
     assert held["recommended_size"] != "41"
     taste = recommend(_constraint(slender, "waist", "fitted", strength=0.5), shirt).to_json()
     assert taste["recommended_size"] == "41"
+
+
+def test_a_date_that_cannot_be_read_stops_the_answer(mature, shirt):
+    """A date that could not be read used to count as no age at all, so measurements taken five
+    years earlier and written the Italian way, 14/03/2021, counted as taken that day, and the
+    answer came out surer than it was, without a word. Today is no less an invented age than any
+    other: a date this implementation reads and cannot read now stops the answer, naming the
+    field. Dates are read as RFC 3339 writes them, the two letters in either case, the same on
+    every Python this package supports, and a date nothing here reads stops nothing."""
+    import copy
+
+    def dated(when):
+        profile = copy.deepcopy(mature)
+        profile["body"]["measurements"]["waist_circumference"]["observed_at"] = when
+        return profile
+
+    for when in ("14/03/2021", "2021-03-14", "2021-03-14T18:00:00+0200", "yesterday"):
+        with pytest.raises(UnreadableDate, match="waist_circumference.observed_at"):
+            recommend(dated(when), shirt)
+
+    def all_taken(when):
+        profile = copy.deepcopy(mature)
+        for measurement in profile["body"]["measurements"].values():
+            measurement["observed_at"] = when
+        return recommend(profile, shirt).confidence
+
+    five_years = all_taken("2021-03-14T18:00:00Z")
+    assert all_taken("2021-03-14t18:00:00z") == five_years
+    assert all_taken("2021-03-14T20:00:00.5+02:00") == five_years
+    assert five_years < recommend(mature, shirt).confidence
+
+    # Read as moments, offsets included: of two preferences the later decides, and 06:00 at five
+    # hours behind UTC is later than 10:00 in UTC.
+    later = ("chest", "regular", "declared", "2026-09-01T06:00:00-05:00")
+    earlier = ("chest", "relaxed", "declared", "2026-09-01T10:00:00Z")
+    both = _bands(_with_preferences(mature, earlier, later), shirt)
+    assert both == _bands(_with_preferences(mature, later), shirt)
+
+    missing = copy.deepcopy(mature)
+    del missing["body"]["measurements"]["neck_circumference"]["observed_at"]
+    with pytest.raises(UnreadableDate, match="neck_circumference.observed_at"):
+        recommend(missing, shirt)
+
+    outcome = copy.deepcopy(mature)
+    outcome["history"][0]["occurred_at"] = "yesterday"
+    with pytest.raises(UnreadableDate, match=r"history\[0\]\.occurred_at"):
+        recommend(outcome, shirt)
+
+    wish = copy.deepcopy(mature)
+    wish["preferences"][0]["updated_at"] = "last winter"
+    with pytest.raises(UnreadableDate, match=r"preferences\[0\]\.updated_at"):
+        recommend(wish, shirt)
+
+    unread = dict(copy.deepcopy(mature), updated_at="yesterday")
+    assert recommend(unread, shirt).confidence == recommend(mature, shirt).confidence

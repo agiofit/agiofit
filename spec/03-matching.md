@@ -123,7 +123,10 @@ cannot raise or lower the answer. Each counts for its source, the producer's own
 its precision. A tolerance wider than the usual one for its source lowers that precision in
 proportion, so a tape measurement declared within 3 cm counts like a remembered one within 3, and
 a girth loses 1 cm of precision for every full year since it was taken, while the lengths of an
-adult do not. Age changes how far an answer can be trusted, not the judgement of any zone.
+adult do not. Age changes how far an answer can be trusted, not the judgement of any zone. The
+reference implementation reads a date as RFC 3339 writes it, and one it reads and cannot read stops
+the answer, with an error naming the field: an age of none would be the most favourable guess, and
+still a guess.
 
 The volume of history is judged the same way, zone by zone with critical zones triple, and an
 outcome counts for less on a girth as it ages, as a measurement does. Outcomes of one age keep

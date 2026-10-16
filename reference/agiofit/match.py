@@ -8,8 +8,9 @@ things the person could add to make the next answer better.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field, asdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from .mapping import (
@@ -75,6 +76,16 @@ LEARNED_STEP_CM = 1.5
 
 class UnsupportedSchemaVersion(ValueError):
     """Raised when a document is written to a major version this code cannot read."""
+
+
+class UnreadableDate(ValueError):
+    """Raised when a date the calculation reads is not one this code can read.
+
+    A date that could not be read used to count as no age at all, so measurements taken five
+    years earlier and written "14/03/2021" counted as taken that day: the most favourable age
+    there is, and no less invented than any other. Refusing is the only way not to invent one,
+    and the error names the field, so the date can be corrected where it was written.
+    """
 
 
 # The four levels a report can be serialised at, in increasing order of disclosure.
@@ -159,6 +170,38 @@ def _version_notes(profile: dict, garment: dict) -> list[str]:
     return notes
 
 
+def _check_dates(profile: dict) -> None:
+    """Refuse a profile with a date the calculation reads and this code cannot.
+
+    Read are the dates of the measurements this implementation knows, of every outcome and of
+    every preference that gives one. A missing one the schema requires cannot be read either.
+    A date nothing here reads, such as the profile's own updated_at, is a validator's to check.
+    """
+    known = {mapping.body_key for mapping in ZONE_MAPPINGS}
+    measurements = ((profile.get("body") or {}).get("measurements")) or {}
+    unreadable = [
+        f"body.measurements.{key}.observed_at ({measurement.get('observed_at')!r})"
+        for key, measurement in sorted(measurements.items())
+        if key in known and _moment(measurement.get("observed_at")) is None
+    ]
+    unreadable += [
+        f"history[{index}].occurred_at ({item.get('occurred_at')!r})"
+        for index, item in enumerate(profile.get("history", []))
+        if _moment(item.get("occurred_at")) is None
+    ]
+    unreadable += [
+        f"preferences[{index}].updated_at ({pref['updated_at']!r})"
+        for index, pref in enumerate(profile.get("preferences", []))
+        if "updated_at" in pref and _moment(pref["updated_at"]) is None
+    ]
+    if unreadable:
+        raise UnreadableDate(
+            "The fit profile has dates this implementation cannot read: "
+            + ", ".join(unreadable)
+            + ". A date is written as RFC 3339 has it, such as 2026-03-14T18:00:00Z."
+        )
+
+
 # --------------------------------------------------------------------------- loading
 
 
@@ -191,18 +234,45 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+# A date-time as RFC 3339 writes it, the format the schemas name: a date, a T, a time, perhaps a
+# fraction of a second, then Z or an offset, the two letters in either case. Read with a pattern
+# rather than datetime.fromisoformat, which reads more than this, and reads it differently from
+# one Python version to the next.
+_DATE_TIME = re.compile(
+    r"(\d{4})-(\d{2})-(\d{2})[Tt](\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?"
+    r"(?:([Zz])|([+-])(\d{2}):([0-5]\d))"
+)
+
+
+def _moment(stamp: object) -> datetime | None:
+    """A date from a profile as a moment, or None if it is not a date-time RFC 3339 writes."""
+    match = _DATE_TIME.fullmatch(stamp) if isinstance(stamp, str) else None
+    if match is None:
+        return None
+    year, month, day, hour, minute, second = (int(part) for part in match.groups()[:6])
+    fraction, zulu, sign, offset_hours, offset_minutes = match.groups()[6:]
+    # A leap second, which RFC 3339 allows and datetime cannot hold, reads as the one before.
+    second = 59 if second == 60 else second
+    try:
+        offset = timedelta(hours=int(offset_hours or 0), minutes=int(offset_minutes or 0))
+        zone = timezone.utc if zulu else timezone(-offset if sign == "-" else offset)
+        microsecond = int((fraction or "0")[:6].ljust(6, "0"))
+        return datetime(year, month, day, hour, minute, second, microsecond, tzinfo=zone)
+    except ValueError:
+        return None
+
+
 def _years_since(stamp: object, now: datetime) -> int:
     """Full years, of 365 days, between a date in the profile and the calculation.
 
-    A date that cannot be read counts as no age at all: the schema requires the field but
-    nothing checks its format, and guessing an age would be inventing one.
+    recommend refuses a profile with a date it cannot read before any age is taken. Counting one
+    as no age at all, as this used to, gave it the most favourable age there is.
     """
-    try:
-        then = datetime.fromisoformat(str(stamp).replace("Z", "+00:00"))
-    except ValueError:
-        return 0
-    if then.tzinfo is None:
-        then = then.replace(tzinfo=timezone.utc)
+    then = _moment(stamp)
+    if then is None:
+        raise UnreadableDate(
+            f"The fit profile has a date this implementation cannot read: {stamp!r}."
+        )
     return max(0, (now - then).days // 365)
 
 
@@ -323,21 +393,19 @@ class MatchReport:
 # --------------------------------------------------------------------------- helpers
 
 
-# Where a date that cannot be read stands among the others: before all of them.
+# Where a date that is not there stands among the others: before all of them. One that is there
+# and cannot be read never gets this far, since recommend refuses it.
 UNREADABLE = datetime.min.replace(tzinfo=timezone.utc)
 
 
 def _when(stamp: object) -> datetime:
-    """A timestamp as a moment, for ordering. One that cannot be read comes first.
+    """A timestamp as a moment, for ordering. One that is missing comes first.
 
     Dates are compared as moments, not as text: 2026-05-05T02:00:00+02:00 is midnight in UTC
     and comes before 2026-05-05T01:00:00Z, which text ordering gets the wrong way round.
     """
-    try:
-        moment = datetime.fromisoformat(str(stamp).replace("Z", "+00:00"))
-    except ValueError:
-        return UNREADABLE
-    return moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
+    moment = _moment(stamp)
+    return UNREADABLE if moment is None else moment
 
 
 def _preference_shift(profile: dict, category: str, zone: str, scale: float) -> float:
@@ -706,6 +774,7 @@ def recommend(
     prod_tol = garment.get("production_tolerance") or {"value": 1.0, "unit": "cm"}
     prod_tol_cm = _cm(prod_tol["value"], prod_tol["unit"])
     version_notes = _version_notes(profile, garment)
+    _check_dates(profile)
     declared_ease = garment.get("intended_ease") or {}
 
     body = ((profile.get("body") or {}).get("measurements")) or {}

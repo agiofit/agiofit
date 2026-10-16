@@ -78,3 +78,6 @@ is, no surer than a cold start, unless the person has already kept a garment des
 
 A preference the person declared at full strength is a constraint, not a strong taste: a size that
 breaks it is not recommended, and when every size does, none is.
+
+A date is read as RFC 3339 writes it, the same on every Python this package supports, and one that
+cannot be read stops the answer instead of counting as today's.

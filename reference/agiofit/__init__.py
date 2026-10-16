@@ -10,6 +10,7 @@ from .match import (
     load_fit_profile,
     load_cut_profile,
     UnknownDisclosureLevel,
+    UnreadableDate,
     UnsupportedSchemaVersion,
     recommend,
 )
@@ -20,6 +21,7 @@ __all__ = [
     "load_fit_profile",
     "load_cut_profile",
     "UnknownDisclosureLevel",
+    "UnreadableDate",
     "UnsupportedSchemaVersion",
     "recommend",
 ]

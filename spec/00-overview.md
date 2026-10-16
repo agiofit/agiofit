@@ -30,6 +30,10 @@ Three requirements apply to every conformant implementation:
 3. Every Match Report MUST be correctable and MUST expose a confidence. A consumer that
    presents a size as final, without a route for the person to disagree, is not conformant.
 
+A validator SHOULD check `format` as an assertion. JSON Schema 2020-12 reads it as an
+annotation unless told otherwise, and a `profile_id` written as an email address then passes a
+schema that asks for a UUID.
+
 ## Reading order
 
 1. `01-fit-profile.md` — the person's side
