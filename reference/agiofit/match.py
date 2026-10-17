@@ -338,6 +338,11 @@ class MatchReport:
     def to_json(self) -> dict:
         """Serialise at the declared disclosure level.
 
+        At result_only the report says what kind of answer it is and nothing about the profile:
+        what the answer rests on and what would improve it stay on the report, for the person,
+        and leave from explained up. The same counts and the same suggestion, reaching every shop
+        Luca asked for a shirt, were nearly a signature.
+
         At ``result_only`` and ``explained`` the numeric ease values are stripped. Publishing both
         the ease and the garment measurement would let anyone subtract one from the other and
         recover the body measurement the person chose not to send. The numbers are admitted by
@@ -381,6 +386,7 @@ class MatchReport:
             "improve_by": self.improve_by,
         }
         if level == "result_only":
+            del out["based_on"], out["improve_by"]
             return out
         alternatives = [alt for alt in self.alternatives if alt.get("note") not in held]
         out["alternatives"] = alternatives
@@ -802,6 +808,10 @@ def _assess(ease: float, lo: float, hi: float, slack: float) -> str:
 
 # --------------------------------------------------------------------------- the matcher
 
+# The two reasons a zone goes unevaluated, as its explanation line says them.
+UNPUBLISHED = "the garment does not publish this measurement"
+UNMEASURED = "no matching body measurement in the profile"
+
 
 def recommend(
     profile: dict,
@@ -900,7 +910,7 @@ def recommend(
                             zone=mapping.zone,
                             assessment="unknown",
                             critical=True,
-                            note="the garment does not publish this measurement",
+                            note=UNPUBLISHED,
                         )
                     )
                 continue
@@ -910,7 +920,7 @@ def recommend(
                         zone=mapping.zone,
                         assessment="unknown",
                         critical=is_critical,
-                        note="no matching body measurement in the profile",
+                        note=UNMEASURED,
                     )
                 )
                 continue
@@ -1175,7 +1185,18 @@ def recommend(
             + ", ".join(unused_ease_zones)
             + "."
         )
-    if any(line.assessment == "unknown" for line in best_lines):
+    # Which side is missing decides what the caveat says, as in the cold start. A critical zone
+    # the garment does not publish is named at every level, since the garment is the shop's own;
+    # one the profile lacks is named only where an explanation is sent, since naming it here
+    # would tell the verifier what the profile lacks. A shirt without its shoulders used to be
+    # put down to the profile, which had them.
+    unpublished = sorted(line.zone for line in best_lines if line.note == UNPUBLISHED)
+    if unpublished:
+        caveats.append(
+            "The garment does not publish a measurement for these critical zones, so they were "
+            "not evaluated: " + ", ".join(unpublished) + "."
+        )
+    if any(line.note == UNMEASURED for line in best_lines):
         caveats.append(
             about(
                 "Some zones could not be evaluated because the profile has no matching "
@@ -1432,7 +1453,12 @@ def _confidence(
 def _improvements(body: dict, profile: dict, garment: dict) -> list[str]:
     """What the person could add, or take again, to make the next answer better.
 
-    It travels at every level, result_only included, so it never names a measurement the person
+    It asks only for the measurements this garment uses, critical zones first. It used to go
+    through the whole vocabulary in alphabetical order: a shirt asked Luca for his thigh and his
+    inseam, and asked a new profile for its arm, chest and hips, leaving out the neck and the
+    shoulders, the two zones a shirt cannot be let out at.
+
+    It leaves only from explained up, and even there it never names a measurement the person
     listed in never_share, and none at all when the whole body layer is listed. "Re-measure with
     a tape: hip_circumference" told the verifier that the profile holds the hips the person had
     kept to themselves, and that they were taken from memory. Nor does it ask for a history the
@@ -1445,17 +1471,29 @@ def _improvements(body: dict, profile: dict, garment: dict) -> list[str]:
     def nameable(key: str) -> bool:
         return "body" not in never and key not in never
 
-    needed = {m.body_key for m in ZONE_MAPPINGS}
-    missing = [k for k in sorted(needed) if k not in body and nameable(k)]
+    crit = critical_zones(garment.get("category", ""), garment)
+    published = {
+        key
+        for size in garment.get("sizes", [])
+        for key in (size.get("finished_measurements") or {})
+    }
+    used = sorted(
+        (m for m in ZONE_MAPPINGS if m.garment_key in published),
+        key=lambda m: (m.zone not in crit, m.body_key),
+    )
+    needed = [m.body_key for m in used]
+    missing = [k for k in needed if k not in body and nameable(k)]
     for key in missing[:3]:
         out.append(f"Add a measurement for {key.replace('_', ' ')}.")
     weak = [
         k
-        for k, v in body.items()
-        if v.get("source") in ("self_reported", "estimated_from_size_labels") and nameable(k)
+        for k in needed
+        if k in body
+        and body[k].get("source") in ("self_reported", "estimated_from_size_labels")
+        and nameable(k)
     ]
     if weak:
-        out.append(f"Re-measure with a tape: {', '.join(sorted(weak)[:3])}.")
+        out.append(f"Re-measure with a tape: {', '.join(weak[:3])}.")
     if not profile.get("history") and "history" not in never:
         out.append("Record how past garments actually fitted — it is the strongest signal available.")
     return out

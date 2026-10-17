@@ -16,7 +16,8 @@ normative is the *shape of the answer*.
    `caveats` and MUST lower `confidence`.
 5. `improve_by` SHOULD be populated whenever confidence is below the implementation's own
    threshold. A person who is told what is missing can fix it; a person given a bare low number
-   cannot.
+   cannot. The suggestions are for the person, and at `result_only` they stay with them
+   (`04-privacy.md`).
 6. A consumer MUST NOT produce a match report from a document written to a schema version it
    cannot read. Refusing is the only honest response: across such a version fields move and
    disappear, so reading the document anyway means looking for values where they no longer are and
@@ -30,7 +31,9 @@ normative is the *shape of the answer*.
    that zone in `caveats`, and the absence MUST NOT raise `confidence`. A consumer that has no
    critical zones for a category MUST say so rather than treat the empty set as coverage of
    everything. A zone that was never looked at is not a zone that fitted, and an answer that
-   skipped the most important measurement must not score like one that checked it.
+   skipped the most important measurement must not score like one that checked it. When what is
+   missing is a measurement of the person's, the zone MAY be named only where an explanation is
+   sent: at `result_only` its name would tell the verifier what the profile lacks.
 
 ## The reference approach, in outline
 
@@ -152,6 +155,17 @@ Each of these reasons is kept back from a report when it speaks about a layer th
 preference, and a size already returned is history. The answer stays the same, and the verifier is
 not told why.
 
+With no size named, `confidence` says how sure the producer is of the comparison that led there,
+not of a size, and `caveats` says why, unless the reason speaks about a layer the person keeps to
+themselves. The reference implementation keeps the confidence it computed for the closest size: no
+size at 0.83 is a confident "none of these fits", where not enough signal is a confidence below
+0.25.
+
+`score`, on an alternative, says how well that size meets its ease bands, from 0 to 1. It is not a
+confidence, and a consumer MUST NOT present it as one: next to a recommended 41 at 0.84, a 42 shown
+at 0.95 reads as the better size, while the 41, whose own score the report does not carry, scored
+1.00.
+
 A consumer MUST NOT present a confidence from another implementation as comparable to its own.
 
 ## What an answer rests on
@@ -164,3 +178,9 @@ the body measurements a garment was compared on, the preferences that decided a 
 and the past purchases it read, each event once. A cold start rests on the purchases it
 was derived from, all of the garment's brand, and counts only those. Nothing the person lists in
 `never_share` is counted (`04-privacy.md`).
+
+## Caveats and notes
+
+`caveats` and the notes on alternatives and explanation lines are written for people. Their wording
+is not part of the shape of the answer and changes between implementations and versions, so a
+consumer SHOULD NOT read them as codes.

@@ -170,9 +170,10 @@ def test_every_report_is_correctable(mature, shirt):
 
 # --------------------------------------------------------------------- privacy behaviour
 
-# The ten keys a result_only report may carry. Pinned as a set because a leak
+# The eight keys a result_only report may carry. Pinned as a set because a leak
 # arrives as a new key, not as a new digit: widening this is a deliberate act and
-# has to be argued for in the diff that widens it.
+# has to be argued for in the diff that widens it. based_on and improve_by are not
+# among them: they describe the profile, not the answer.
 RESULT_ONLY_KEYS = {
     "schema_version",
     "cut_profile_id",
@@ -181,9 +182,7 @@ RESULT_ONLY_KEYS = {
     "recommended_size",
     "confidence",
     "correctable",
-    "based_on",
     "caveats",
-    "improve_by",
 }
 
 
@@ -193,10 +192,10 @@ def test_result_only_leaks_nothing(mature, shirt):
 
     # Free prose is the one allowed field a measurement could travel inside, so it
     # is the only place worth sweeping for digits. Sweeping the whole document
-    # instead collides with the timestamp, the confidence score, the signal counts
-    # and any size label that happens to be a number: Italian sizes reach 46, which
-    # is also the shoulder measurement below.
-    prose = " ".join(out["caveats"] + out["improve_by"])
+    # instead collides with the timestamp, the confidence score and any size label
+    # that happens to be a number: Italian sizes reach 46, which is also the shoulder
+    # measurement below.
+    prose = " ".join(out["caveats"])
     for measure in ("100", "88", "46"):  # chest, waist, shoulders
         assert measure not in prose
 
@@ -1240,11 +1239,11 @@ def test_a_never_shared_measurement_is_never_named(mature, shirt):
     every other name in place."""
     import copy
 
-    def everything_said(profile):
+    def everything_said(profile, garment=shirt):
         said = []
         for level in ("result_only", "explained", "scoped", "full"):
-            out = recommend(profile, shirt, disclosure_level=level).to_json()
-            said += out["caveats"] + out["improve_by"]
+            out = recommend(profile, garment, disclosure_level=level).to_json()
+            said += out["caveats"] + out.get("improve_by", [])
         return " ".join(said)
 
     def mentions(text, key):
@@ -1252,7 +1251,8 @@ def test_a_never_shared_measurement_is_never_named(mature, shirt):
 
     remembered = copy.deepcopy(mature)
     remembered["body"]["measurements"]["hip_circumference"]["source"] = "self_reported"
-    assert not mentions(everything_said(remembered), "hip_circumference")
+    # Trousers use the hips, so they are where a suggestion would ask for them again.
+    assert not mentions(everything_said(remembered, _trousers()), "hip_circumference")
     assert mentions(everything_said(remembered), "arm_length")
 
     hidden = copy.deepcopy(mature)
@@ -1569,7 +1569,7 @@ def test_based_on_counts_what_the_answer_used(mature, cold, shirt):
     start rests on the purchases of this brand it was derived from, and on nothing else."""
     import copy
 
-    assert recommend(mature, shirt).to_json()["based_on"] == {
+    assert recommend(mature, shirt).based_on == {
         "body_signals": 5,
         "preference_signals": 2,
         "history_signals": 3,
@@ -1585,13 +1585,13 @@ def test_based_on_counts_what_the_answer_used(mature, cold, shirt):
     undecided["preferences"].append(
         dict(overall, preference="relaxed", source="inferred_from_history")
     )
-    assert recommend(undecided, shirt).to_json()["based_on"]["preference_signals"] == 2
+    assert recommend(undecided, shirt).based_on["preference_signals"] == 2
 
     # Without the shoulders measured, neither the preference about them nor what the history
     # taught about them is used.
     unmeasured = copy.deepcopy(mature)
     del unmeasured["body"]["measurements"]["shoulder_width"]
-    assert recommend(unmeasured, shirt).to_json()["based_on"] == {
+    assert recommend(unmeasured, shirt).based_on == {
         "body_signals": 4,
         "preference_signals": 1,
         "history_signals": 3,
@@ -1606,7 +1606,7 @@ def test_based_on_counts_what_the_answer_used(mature, cold, shirt):
         "brand_specific_history_signals": 1,
         "learned_offset_applied": False,
     }
-    assert recommend(cold, shirt).to_json()["based_on"] == alone
+    assert recommend(cold, shirt).based_on == alone
     # A return to another brand, and a purchase of this one labelled in another size system,
     # are not what the answer was derived from.
     elsewhere = copy.deepcopy(cold)
@@ -1616,7 +1616,7 @@ def test_based_on_counts_what_the_answer_used(mature, cold, shirt):
     other_system = copy.deepcopy(cold["history"][0])
     other_system["garment_ref"].update(size_label="16", size_system="US")
     elsewhere["history"] += [other_brand, other_system]
-    assert recommend(elsewhere, shirt).to_json()["based_on"] == alone
+    assert recommend(elsewhere, shirt).based_on == alone
 
 
 def test_a_layer_in_never_share_leaves_its_counts_out(mature, shirt):
@@ -1628,7 +1628,7 @@ def test_a_layer_in_never_share_leaves_its_counts_out(mature, shirt):
     import copy
 
     plain = recommend(mature, shirt)
-    counts = plain.to_json()["based_on"]
+    counts = plain.based_on
     layers = {
         "body": {"body_signals"},
         "preferences": {"preference_signals"},
@@ -1644,18 +1644,20 @@ def test_a_layer_in_never_share_leaves_its_counts_out(mature, shirt):
                 plain.confidence,
             )
             left = {key: value for key, value in counts.items() if key not in keys}
-            assert report.to_json()["based_on"] == left, (layer, level)
+            assert report.based_on == left, (layer, level)
+            shown = None if level == "result_only" else left
+            assert report.to_json().get("based_on") == shown, (layer, level)
 
     chest = copy.deepcopy(mature)
     chest["disclosure_defaults"]["never_share"] = ["chest_circumference"]
-    assert recommend(chest, shirt).to_json()["based_on"] == dict(counts, body_signals=4)
+    assert recommend(chest, shirt).based_on == dict(counts, body_signals=4)
 
 
 def _said(out):
     """Every sentence a serialised report says: caveats, suggestions and notes."""
     return (
         out["caveats"]
-        + out["improve_by"]
+        + out.get("improve_by", [])
         + [alt["note"] for alt in out.get("alternatives", []) if "note" in alt]
         + [line["note"] for line in out.get("explanation", []) if "note" in line]
     )
@@ -1742,7 +1744,7 @@ def test_a_history_kept_private_is_not_asked_for(mature, shirt):
     import copy
 
     def asks(profile):
-        return any("past garments" in s for s in recommend(profile, shirt).to_json()["improve_by"])
+        return any("past garments" in s for s in recommend(profile, shirt).improve_by)
 
     empty = copy.deepcopy(mature)
     empty["history"] = []
@@ -1842,8 +1844,69 @@ def test_each_level_carries_only_what_it_may(mature, cold, shirt):
             out = recommend(profile, shirt, disclosure_level=level).to_json()
             lines = out.get("explanation", [])
             if level == "result_only":
-                assert "explanation" not in out and "alternatives" not in out
+                assert not {"explanation", "alternatives", "based_on", "improve_by"} & set(out)
             if level in ("result_only", "explained"):
                 assert not any("ease_cm" in line for line in lines), level
             if level != "full":
                 assert not any("intended_ease_cm" in line for line in lines), level
+
+
+def test_result_only_says_what_kind_of_answer_it_is(mature, shirt):
+    """result_only carried what the answer rests on and what would improve it, and the same counts
+    and the same suggestion, reaching every shop Luca asked for a shirt, were nearly a signature.
+    They describe the profile, not the answer: they stay on the report, for the person, and leave
+    from explained up. The caveats stay, because they say what kind of answer it is."""
+    import copy
+
+    report = recommend(mature, shirt, disclosure_level="result_only")
+    out = report.to_json()
+    assert "based_on" not in out and "improve_by" not in out
+    assert report.based_on and report.improve_by
+    for level in ("explained", "scoped", "full"):
+        out = recommend(mature, shirt, disclosure_level=level).to_json()
+        assert (out["based_on"], out["improve_by"]) == (report.based_on, report.improve_by), level
+
+    wide_neck = copy.deepcopy(mature)
+    wide_neck["body"]["measurements"]["neck_circumference"]["value"] = 46
+    out = recommend(wide_neck, shirt, disclosure_level="result_only").to_json()
+    assert any("cannot be let out" in caveat for caveat in out["caveats"])
+
+
+def test_a_zone_the_garment_leaves_out_is_named_and_not_blamed_on_the_profile(mature, shirt):
+    """A shirt that did not publish its shoulders was reported as "Some zones could not be
+    evaluated because the profile has no matching measurement.", though the profile had them, and
+    the zone went unnamed, which requirement 7 of spec/03 asks against. The garment's own gaps are
+    named at every level. A measurement the profile lacks is named only where an explanation is
+    sent: at result_only its name would tell the verifier what the profile lacks."""
+    import copy
+
+    without = copy.deepcopy(shirt)
+    for size in without["sizes"]:
+        del size["finished_measurements"]["shoulder_width"]
+    for level in ("result_only", "explained"):
+        caveats = recommend(mature, without, disclosure_level=level).to_json()["caveats"]
+        assert any("garment does not publish" in c and "shoulders" in c for c in caveats), level
+        assert not any("profile has no matching measurement" in c for c in caveats), level
+
+    no_neck = copy.deepcopy(mature)
+    del no_neck["body"]["measurements"]["neck_circumference"]
+    caveats = recommend(no_neck, shirt, disclosure_level="result_only").to_json()["caveats"]
+    assert any("profile has no matching measurement" in c for c in caveats)
+    assert not any("neck" in c for c in caveats)
+    out = recommend(no_neck, shirt, disclosure_level="explained").to_json()
+    assert [line["zone"] for line in out["explanation"] if line["assessment"] == "unknown"] == [
+        "neck"
+    ]
+
+
+def test_a_suggestion_asks_only_for_what_the_garment_uses(mature, cold, shirt):
+    """improve_by went through the whole vocabulary in alphabetical order. For a shirt it asked
+    Luca for his thigh and to measure his inseam again, which no shirt uses, and asked a new
+    profile for its arm, chest and hips, leaving out the neck and the shoulders, the two zones a
+    shirt cannot be let out at. It asks for what this garment uses, critical zones first."""
+    assert recommend(mature, shirt).improve_by == ["Re-measure with a tape: arm_length."]
+    assert recommend(cold, shirt).improve_by == [
+        "Add a measurement for neck circumference.",
+        "Add a measurement for shoulder width.",
+        "Add a measurement for arm length.",
+    ]

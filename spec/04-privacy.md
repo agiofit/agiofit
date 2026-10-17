@@ -9,10 +9,13 @@ Four levels, declared in the match report itself:
 
 | Level | The verifier receives |
 |---|---|
-| `result_only` | A size and a confidence. Nothing else. |
-| `explained` | Plus qualitative per-zone reasoning — "tight at the shoulders" — with no numbers. |
-| `scoped` | Plus the specific measurements needed for this garment. |
-| `full` | The whole profile. Should be rare, and a consumer SHOULD justify it. |
+| `result_only` | A size, a confidence and the caveats on the answer. Nothing else. |
+| `explained` | Plus reasoning per zone — "tight at the shoulders" — with no numbers, and more. |
+| `scoped` | Plus the ease of each zone, from which this garment's measurements follow. |
+| `full` | Plus the band of each zone. Should be rare, and a consumer SHOULD justify it. |
+
+At `explained` the "more" is the alternatives, what the answer rests on (`based_on`) and what would
+improve it (`improve_by`). No level carries the profile itself: `full` is all that a report holds.
 
 When a request names no level, the report MUST be serialised at the level the person declared in
 `disclosure_defaults.default_level`, and at `result_only` when the profile declares none. The
@@ -61,11 +64,18 @@ history taught, and the verifier knows the band it published. At `scoped`, which
 measurements a garment needs and nothing about preferences or history, the band MUST be omitted;
 it may travel at `full`, except as `never_share` says.
 
-Put together, by level: at `result_only` a report MUST NOT carry `explanation` or `alternatives`;
-at `explained`, as above, no explanation line carries `ease_cm` or `intended_ease_cm`; at
-`scoped`, none carries `intended_ease_cm`. The schema of this version checks none of it, so a
-report that breaks these rules still validates, and validation is no proof that a report is safe to
-send.
+Put together, by level: at `result_only` a report MUST NOT carry `explanation`, `alternatives`,
+`based_on` or `improve_by`, which describe the profile rather than the answer: the same counts and
+suggestions reaching several verifiers would let them recognise one person. At `explained`, as
+above, no explanation line carries `ease_cm` or `intended_ease_cm`; at `scoped`, none carries
+`intended_ease_cm`. The schema of this version checks none of it, so a report that breaks these
+rules still validates, and validation is no proof that a report is safe to send.
+
+Without numbers is not without information. At `explained`, a judgement read against the garment's
+published measurements and the band it declares places the body measurement inside that band: "as
+cut" at the collar of a shirt whose band is 1 to 2.5 cm places a neck within a centimetre and a
+half. A person who wants a measurement kept entirely lists it in `never_share`, which takes its
+judgement out as well.
 
 ## Regulatory notes
 

@@ -104,3 +104,8 @@ preferences or history in `never_share`: it carries both.
 
 Each level carries only what `spec/04` allows it. The schema of this version does not check it, so
 a test does, on reports of every kind.
+
+At `result_only` a report says what kind of answer it is and nothing about the profile: what the
+answer rests on and what would improve it leave from `explained` up. A critical zone the garment
+does not publish is named, and not put down to the profile; a suggestion asks only for what the
+garment uses, critical zones first.
