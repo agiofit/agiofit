@@ -75,7 +75,7 @@ between a system that annoys people and one they trust.
 import in one action. Producers SHOULD populate it for any imported batch. It names the batch and
 nothing else: it MUST NOT carry a retailer's customer ID, an order number or any other identifier
 taken from the source, for the reason `profile_id` must not (see *Identifiers*). The profile
-travels whole when the person moves it to another vault or shares it at `full`, and such a
+travels whole when the person moves it to another vault, wallet or fit provider, and such a
 reference would tie it to the source's records.
 
 `source` says who recorded an outcome, not how much it counts. What happened to a garment does not

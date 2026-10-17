@@ -11,7 +11,7 @@ Four levels, declared in the match report itself:
 |---|---|
 | `result_only` | A size, a confidence and the caveats on the answer. Nothing else. |
 | `explained` | Plus reasoning per zone — "tight at the shoulders" — with no numbers, and more. |
-| `scoped` | Plus the ease of each zone, from which this garment's measurements follow. |
+| `scoped` | Plus each zone's ease, from which the body measurements this garment needs follow. |
 | `full` | Plus the band of each zone. Should be rare, and a consumer SHOULD justify it. |
 
 At `explained` the "more" is the alternatives, what the answer rests on (`based_on`) and what would
