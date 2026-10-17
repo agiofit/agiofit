@@ -331,6 +331,9 @@ class MatchReport:
     # Sentences that speak about a layer the person listed whole in never_share: caveats, and
     # notes on alternatives or explanation lines. Kept on the report and never serialised.
     withheld_sentences: list[str] = field(default_factory=list)
+    # Whether the bands of the explanation stay on the report at every level: they carry the
+    # preferences and the history, and the person listed one of them in never_share.
+    withheld_bands: bool = False
 
     def to_json(self) -> dict:
         """Serialise at the declared disclosure level.
@@ -340,6 +343,13 @@ class MatchReport:
         recover the body measurement the person chose not to send. The numbers are admitted by
         naming the levels that allow them, and a level this code does not know is refused, so a
         typo can only ever stop an answer, never widen it.
+
+        The band a zone was judged against leaves only at full. It is the garment's, moved by the
+        person's preferences and by what their history taught, and the shop knows the band it
+        published: Luca's shoulders at 0.5 to 2.5 cm, against the 0 to 2 of the Oxford, told it
+        about the shirts he had sent back, at scoped, which promises the measurements this
+        garment needs. With preferences or history in never_share it leaves at no level and from
+        no zone: taken out only where it moved, it would say where.
 
         A zone whose measurement the person listed in never_share is left out altogether,
         judgement included: "as cut", read against the published garment and its ease band,
@@ -376,6 +386,7 @@ class MatchReport:
         out["alternatives"] = alternatives
         numeric = level in ("scoped", "full")
         lines = []
+        band_kept_back = False
         for line in self.explanation:
             if line.zone in self.withheld_zones or line.note in held:
                 continue
@@ -383,8 +394,12 @@ class MatchReport:
             if not numeric:
                 d.pop("ease_cm", None)
                 d.pop("intended_ease_cm", None)
-            elif d.get("intended_ease_cm"):
-                d["intended_ease_cm"] = list(d["intended_ease_cm"])
+            elif level == "full" and not self.withheld_bands:
+                if d.get("intended_ease_cm"):
+                    d["intended_ease_cm"] = list(d["intended_ease_cm"])
+            else:
+                band_kept_back = band_kept_back or (level == "full" and "intended_ease_cm" in d)
+                d.pop("intended_ease_cm", None)
             lines.append(d)
         out["explanation"] = lines
         # Said only where an explanation is sent: at result_only there is nothing to withhold,
@@ -392,8 +407,9 @@ class MatchReport:
         told = []
         if any(line.zone in self.withheld_zones for line in self.explanation):
             told.append("Some zones are not explained here, at the person's request.")
-        # A sentence is held back only once it is in the report, so any at all is one fewer.
-        if held:
+        # A sentence is held back only once it is in the report, so any at all is one fewer; a
+        # band kept back at full is reasoning kept back too.
+        if held or band_kept_back:
             told.append("Some of the reasoning is not given here, at the person's request.")
         if self.unknown_measurements:
             told.append(
@@ -1270,6 +1286,7 @@ def recommend(
         withheld_zones=withheld_zones,
         unknown_measurements=unknown_measurements,
         withheld_sentences=held_back,
+        withheld_bands=bool(never.intersection(("preferences", "history"))),
     )
 
 

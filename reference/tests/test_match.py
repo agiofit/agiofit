@@ -1785,3 +1785,41 @@ def test_an_import_reference_never_leaves(mature, shirt):
         out = recommend(coded, shirt, disclosure_level=level).to_json()
         assert "8812345" not in json.dumps(out), level
         assert out == recommend(mature, shirt, disclosure_level=level).to_json(), level
+
+
+def test_a_band_leaves_only_at_full_and_never_with_a_private_layer(mature, shirt):
+    """The band a zone was judged against is the garment's, moved by the person's preferences and
+    by what their history taught, and the shop knows the band it published. At scoped, Luca's
+    shoulders came out at 0.5 to 2.5 cm against the 0 to 2 of the Oxford, which told it about the
+    shirts he sent back; with relaxed shirts in a profile that keeps its preferences private, the
+    chest came out at 14.2 to 22.2 against 12 to 20. scoped promises the measurements a garment
+    needs, so the band leaves only at full, and with preferences or history in never_share at no
+    level, from no zone. The ease and the judgement stay."""
+    import copy
+
+    def lines(profile, level):
+        return recommend(profile, shirt, disclosure_level=level).to_json()["explanation"]
+
+    assert all("ease_cm" in l and "intended_ease_cm" not in l for l in lines(mature, "scoped"))
+    shoulders = next(l for l in lines(mature, "full") if l["zone"] == "shoulders")
+    assert shoulders["intended_ease_cm"] == [0.5, 2.5]
+
+    relaxed = copy.deepcopy(mature)
+    for pref in relaxed["preferences"]:
+        if (pref["category"], pref["zone"]) == ("shirts", "overall"):
+            pref["preference"] = "relaxed"
+    chest = next(l for l in lines(relaxed, "full") if l["zone"] == "chest")
+    assert chest["intended_ease_cm"] == [14.2, 22.2]
+
+    kept_back = "Some of the reasoning is not given here, at the person's request."
+    for layer in ("preferences", "history"):
+        listed = copy.deepcopy(relaxed)
+        listed["disclosure_defaults"]["never_share"] = [layer]
+        for level in ("scoped", "full"):
+            out = recommend(listed, shirt, disclosure_level=level).to_json()
+            plain = recommend(relaxed, shirt, disclosure_level=level).to_json()
+            assert all("intended_ease_cm" not in l for l in out["explanation"]), (layer, level)
+            assert [(l["zone"], l["assessment"], l["ease_cm"]) for l in out["explanation"]] == [
+                (l["zone"], l["assessment"], l["ease_cm"]) for l in plain["explanation"]
+            ], (layer, level)
+            assert (kept_back in out["caveats"]) == (level == "full"), (layer, level)

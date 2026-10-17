@@ -98,3 +98,6 @@ about it leaves, and a size set aside for its sake leaves the alternatives.
 
 Who recorded an outcome does not change how much it counts, and `import_ref` never reaches a
 report.
+
+The band a zone was judged against leaves only at `full`, and never when the person lists
+preferences or history in `never_share`: it carries both.

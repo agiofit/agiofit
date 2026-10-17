@@ -40,6 +40,9 @@ its score, the size would say that it was set aside. The answer is computed the 
 back at the person's request; at `result_only` it says nothing, since that would only tell the
 verifier that the person keeps something to themselves.
 
+When the person lists `preferences` or `history`, a report MUST NOT include the band of any zone,
+at any level: taken out only where it moved, it would say where it moved.
+
 The intended architecture is that the *computation happens where the profile lives* — a vault, a
 wallet, or a fit provider the person chose — and only the result travels. A retailer does not need
 a chest measurement to sell a shirt. It needs a size.
@@ -51,6 +54,12 @@ garment minus body. Publishing both hands over the body measurement to anyone wi
 which defeats the entire point of not sending it. The reference implementation enforces this in
 serialisation rather than trusting callers, refuses a level it does not recognise instead of
 guessing what was meant, and there is a test for each.
+
+The same subtraction reads more than the body. The band a zone was judged against
+(`intended_ease_cm`) is the garment's own, moved by the person's preferences and by what their
+history taught, and the verifier knows the band it published. At `scoped`, which gives the
+measurements a garment needs and nothing about preferences or history, the band MUST be omitted;
+it may travel at `full`, except as `never_share` says.
 
 ## Regulatory notes
 
