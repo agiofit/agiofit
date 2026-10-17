@@ -61,6 +61,12 @@ history taught, and the verifier knows the band it published. At `scoped`, which
 measurements a garment needs and nothing about preferences or history, the band MUST be omitted;
 it may travel at `full`, except as `never_share` says.
 
+Put together, by level: at `result_only` a report MUST NOT carry `explanation` or `alternatives`;
+at `explained`, as above, no explanation line carries `ease_cm` or `intended_ease_cm`; at
+`scoped`, none carries `intended_ease_cm`. The schema of this version checks none of it, so a
+report that breaks these rules still validates, and validation is no proof that a report is safe to
+send.
+
 ## Regulatory notes
 
 Body measurements are generally **not** special-category biometric data under GDPR Article 9, which

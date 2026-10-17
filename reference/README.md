@@ -101,3 +101,6 @@ report.
 
 The band a zone was judged against leaves only at `full`, and never when the person lists
 preferences or history in `never_share`: it carries both.
+
+Each level carries only what `spec/04` allows it. The schema of this version does not check it, so
+a test does, on reports of every kind.

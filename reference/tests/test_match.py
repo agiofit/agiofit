@@ -1823,3 +1823,27 @@ def test_a_band_leaves_only_at_full_and_never_with_a_private_layer(mature, shirt
                 (l["zone"], l["assessment"], l["ease_cm"]) for l in plain["explanation"]
             ], (layer, level)
             assert (kept_back in out["caveats"]) == (level == "full"), (layer, level)
+
+
+def test_each_level_carries_only_what_it_may(mature, cold, shirt):
+    """spec/04 says what a report may carry at each level: no explanation and no alternatives at
+    result_only, no ease at explained, no band at scoped. The schema of this version checks none
+    of it, and a report from another producer that breaks the rule still validates, so the rule
+    is checked here as it is written, on reports of every kind, at every level."""
+    import copy
+
+    returned = copy.deepcopy(mature)
+    returned["history"].append(_returned(shirt, "41"))
+    wide_neck = copy.deepcopy(mature)
+    wide_neck["body"]["measurements"]["neck_circumference"]["value"] = 46
+    profiles = (mature, cold, returned, wide_neck, _constraint(mature, "chest", "relaxed"))
+    for profile in profiles:
+        for level in ("result_only", "explained", "scoped", "full"):
+            out = recommend(profile, shirt, disclosure_level=level).to_json()
+            lines = out.get("explanation", [])
+            if level == "result_only":
+                assert "explanation" not in out and "alternatives" not in out
+            if level in ("result_only", "explained"):
+                assert not any("ease_cm" in line for line in lines), level
+            if level != "full":
+                assert not any("intended_ease_cm" in line for line in lines), level
