@@ -14,7 +14,8 @@ no default.
 
 **`provenance.published_by`.** A profile measured by the brand on a production sample, one typed in
 by a marketplace seller, and one crowdsourced by a community are all legitimate and all different.
-Consumers SHOULD weight them differently and SHOULD surface the difference to the person.
+This specification assigns them no weight (see Provenance below), and consumers SHOULD surface
+the difference to the person.
 
 **`sizes[].finished_measurements`.** Per size, not per style. Grading is where sizing goes wrong.
 

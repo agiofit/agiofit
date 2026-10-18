@@ -43,8 +43,9 @@ them for one.
 
 ## Layer 2 — Preferences
 
-What the person *wants*, per `category` and `zone`, on a five-point scale shared with the garment's
-`cut` field so the two can be compared directly.
+What the person *wants*, per `category` and `zone`, on the same five-point scale as the garment's
+`cut` field, so a person reads both the same way. A consumer should not compute with `cut`
+(`02-cut-profile.md`).
 
 `strength` separates a taste from a constraint. "I prefer relaxed sleeves" and "I cannot wear
 anything tight at the neck" are not the same statement and MUST NOT be encoded identically. A
