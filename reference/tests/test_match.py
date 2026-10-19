@@ -222,6 +222,15 @@ def test_flat_laid_measurements_are_doubled(mature, shirt):
     assert chest["ease_cm"] > 5  # would be deeply negative if doubling were skipped
 
 
+def test_zone_vocabulary_stays_identical_across_schemas():
+    # The Cut Profile carries its own copy of the zone enum so that it can be
+    # validated without fetching a second document. A copy is only safe while
+    # something notices when it drifts, and this is that something.
+    fit = json.loads((SCHEMAS / "fit-profile.schema.json").read_text(encoding="utf-8"))
+    cut = json.loads((SCHEMAS / "cut-profile.schema.json").read_text(encoding="utf-8"))
+    assert cut["$defs"]["zone"]["enum"] == fit["$defs"]["zone"]["enum"]
+
+
 def _in_inches(measurement):
     """The same measurement, tolerance included, written in inches."""
     measurement["value"] /= 2.54
