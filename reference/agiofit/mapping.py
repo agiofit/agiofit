@@ -15,10 +15,11 @@ class ZoneMapping:
     body_key: str
     doubles_when_flat_laid: bool
     linear: bool  # linear zones (shoulder, sleeve) tolerate far less ease than girths
-    offset_scale: float  # how much of a learned brand offset applies here
+    offset_scale: float  # how much of any shift applies here, learned or stated
 
     # A brand that "runs small" runs small in the torso. Applying the same centimetre shift to a
-    # collar, where 1 cm is a whole size, turns a useful correction into a wrong answer.
+    # collar, where 1 cm is a whole size, turns a useful correction into a wrong answer. A stated
+    # preference is no different: a relaxed collar is about a size larger, not four.
 
 
 ZONE_MAPPINGS: tuple[ZoneMapping, ...] = (
@@ -31,6 +32,13 @@ ZONE_MAPPINGS: tuple[ZoneMapping, ...] = (
     ZoneMapping("sleeve_length", "sleeve_length", "arm_length", False, True, 0.25),
     ZoneMapping("inseam", "inseam", "inseam", False, True, 0.25),
 )
+
+# The zones this implementation can actually evaluate. Derived, never written by hand: a zone is
+# usable exactly when a row above reaches it, so the two can never drift apart. Half the zone
+# vocabulary is missing from here, and that is not a defect in itself - the vocabulary belongs to
+# the specification, the ability to use it belongs to the implementation. Saying nothing about the
+# difference is the defect.
+MAPPED_ZONES: frozenset[str] = frozenset(m.zone for m in ZONE_MAPPINGS)
 
 # Zones that cannot be altered or tolerated when wrong, per category.
 CRITICAL_ZONES: dict[str, tuple[str, ...]] = {
@@ -66,8 +74,9 @@ GENERIC_EASE: dict[bool, tuple[float, float]] = {
     True: (0.0, 3.0),    # linear
 }
 
-# How a stated preference shifts the acceptable ease band, in cm, for a girth zone.
-# Linear zones use a quarter of the shift.
+# How far a stated preference shifts the acceptable ease band, in cm, before the zone's own
+# scale. Each zone takes it at its offset_scale, as it takes a learned offset: whole at the
+# chest, waist and hip, half at the thigh, a quarter on the lengths, a fifth at the collar.
 PREFERENCE_SHIFT: dict[str, float] = {
     "very_fitted": -7.0,
     "fitted": -3.5,
@@ -83,6 +92,16 @@ STRETCH_CLASS_FRACTION: dict[str, float] = {
     "medium": 0.05,
     "high": 0.10,
 }
+
+
+# Categories for which this implementation has no critical zones to offer. Not the same as a
+# category that has none: `underwear` covers briefs, where the waist and the hip decide the fit,
+# and bras, where the bust does and `underbust` is not even in the zone vocabulary. One default
+# would be wrong for half of each of these, so there is no default. A garment may still name its
+# own, and then the document decides instead of this table.
+CATEGORIES_WITHOUT_CRITICAL_DEFAULTS: frozenset[str] = frozenset(
+    {"activewear", "underwear", "swimwear", "accessories"}
+)
 
 
 def critical_zones(category: str, garment: dict) -> set[str]:

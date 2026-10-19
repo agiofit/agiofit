@@ -16,7 +16,24 @@ normative is the *shape of the answer*.
    `caveats` and MUST lower `confidence`.
 5. `improve_by` SHOULD be populated whenever confidence is below the implementation's own
    threshold. A person who is told what is missing can fix it; a person given a bare low number
-   cannot.
+   cannot. The suggestions are for the person, and at `result_only` they stay with them
+   (`04-privacy.md`).
+6. A consumer MUST NOT produce a match report from a document written to a schema version it
+   cannot read. Refusing is the only honest response: across such a version fields move and
+   disappear, so reading the document anyway means looking for values where they no longer are and
+   answering from whatever happens to be found, which produces a confident answer built on the
+   wrong numbers. Which versions can be read across is decided by the version itself: while the
+   major version is `0`, a change of minor version is free to break and MUST be treated as
+   unreadable; from `1.0` onwards the major version is the line. A newer patch MAY be read, and
+   the consumer SHOULD say in `caveats` that part of the document was ignored.
+7. When a consumer cannot evaluate a zone that has been named — by the garment in
+   `critical_zones` or `intended_ease`, or by the consumer's own category defaults — it MUST name
+   that zone in `caveats`, and the absence MUST NOT raise `confidence`. A consumer that has no
+   critical zones for a category MUST say so rather than treat the empty set as coverage of
+   everything. A zone that was never looked at is not a zone that fitted, and an answer that
+   skipped the most important measurement must not score like one that checked it. When what is
+   missing is a measurement of the person's, the zone MAY be named only where an explanation is
+   sent: at `result_only` its name would tell the verifier what the profile lacks.
 
 ## The reference approach, in outline
 
@@ -36,12 +53,42 @@ loosely, which is the honest outcome. Critical zones carry triple weight, and be
 critical zone is penalised more heavily than being too loose, because a shoulder seam cannot be let
 out.
 
-Two details worth stealing:
+Every tolerance is read in the unit of its own measurement. A body measurement that declares none
+is not taken as exact: the reference assumes the wide end of what its kind of measurement usually
+carries, 1.5 cm for a tape or a scan and 3 cm for anything else, so that leaving the field out
+never makes a measurement look more precise than the usual one of its kind.
 
-- **Learned offsets are scaled per zone.** A brand that runs small runs small in the torso. Shifting
-  a collar by the same number of centimetres turns a useful correction into a wrong answer, since a
-  centimetre at the neck is an entire size.
+Eight details worth stealing:
+
+- **Learned offsets go where the history says the garment was wrong.** An outcome that carries
+  `zone_feedback` moves only the zones it names, each in the direction of its verdict, and a
+  verdict on `overall` covers the zones not named one by one. Only an outcome that does not say
+  where moves every zone, by the scale below. A kept garment moves nothing: it records what was
+  accepted.
+- **What was accepted counts for less next time.** When a kept garment lists a zone in
+  `kept_despite` and the same entry's `zone_feedback` says which way that zone was off, a later
+  miss in that direction, on that zone, in the same category, counts half as much when sizes are
+  compared, whatever the brand: the compromise is the person's, not the brand's. The judgement in
+  the report is not softened, so a waist that is too loose is still reported as too loose. A zone
+  listed without a verdict of its own says what was tolerated but not which way, and teaches
+  nothing.
+- **Learned offsets and preferences are scaled per zone.** A brand that runs small runs small in
+  the torso. Shifting a collar by the same number of centimetres turns a useful correction into a
+  wrong answer, since a centimetre at the neck is an entire size, and a stated preference is no
+  different: a relaxed collar is about a size larger, not four.
 - **Same-brand history counts double.** Sizing drift is overwhelmingly brand-specific.
+- **The same outcome counts once.** An entry identical to another in everything but `source` and
+  `import_ref`, with its date read as a moment, is the same event written twice, and counts once.
+- **On a girth, a recent outcome outweighs an old one.** Next to the others, an outcome weighs
+  1.5 / (1.5 + 1 cm for every full year since it happened), the drift the measurements are aged
+  by. On a length, which an adult does not grow out of, every outcome weighs the same.
+- **The same model needs no category.** A history entry without a category still counts when its
+  `brand` and `style_id` match the garment's, which makes it the same model; any other entry
+  without one is left out rather than guessed.
+- **One preference decides each zone.** A preference about the zone itself wins over one about
+  the garment overall; between two at the same level the declared one wins over the inferred
+  one, and then the more recent. Preferences are never added together, so a repeated import
+  counts once.
 
 ## Cold start
 
@@ -51,10 +98,89 @@ and derives a size from labels and outcomes, capped at 0.40 confidence.
 It deliberately refuses to do this across brands. A size label from one brand says close to nothing
 about another's, and pretending otherwise is precisely how size charts earned their reputation.
 
+The same ceiling holds when the evidence is the same. A body measurement whose `source` is
+`estimated_from_size_labels` is a size label written down as a measurement, and if it could lift
+an answer past 0.40, the refusal above would be undone one step removed. Above the ceiling, the
+reference implementation earns confidence only through the measurements used that are not label
+estimates, critical zones weighing three times as much, as they do when a size is chosen, and it
+says so in `caveats` whenever the ceiling lowers an answer. Other sources are left as they are: a
+measurement inferred from history can come from the finished measurements of garments that were
+kept, which are centimetres, not labels.
+
 ## Confidence
 
 Confidence is a producer's own estimate, not a probability. The reference implementation combines
 zone coverage, coverage of *critical* zones specifically, the quality of the measurement sources,
-the margin between the best size and the runner-up, and the volume of relevant history.
+the margin between the best size and the runner-up, and the volume of relevant history, under a
+ceiling when the measurements used were estimated from size labels (see *Cold start*), and under
+the same ceiling when the size it names does not fit somewhere (see below).
+
+Critical zone coverage counts every critical zone the consumer knows about, including the ones it
+could not reach: a zone with no mapping, and a zone whose measurement the garment never published,
+both stay in the denominator. Leaving them out is what lets a document score better for saying
+less, and requirement 7 exists to forbid it.
+
+The quality of the measurements is judged on the ones this garment uses, critical zones weighing
+three times as much, as they do when a size is chosen: a measurement no garment of this kind reads
+cannot raise or lower the answer. Each counts for its source, the producer's own confidence and
+its precision. A tolerance wider than the usual one for its source lowers that precision in
+proportion, so a tape measurement declared within 3 cm counts like a remembered one within 3, and
+a girth loses 1 cm of precision for every full year since it was taken, while the lengths of an
+adult do not. Age changes how far an answer can be trusted, not the judgement of any zone. The
+reference implementation reads a date as RFC 3339 writes it, and one it reads and cannot read stops
+the answer, with an error naming the field: an age of none would be the most favourable guess, and
+still a guess.
+
+The volume of history is judged the same way, zone by zone with critical zones triple, and an
+outcome counts for less on a girth as it ages, as a measurement does. Outcomes of one age keep
+the judgement they gave: only next to a more recent one does an old outcome say less.
+
+An answer is held to its own explanation. A size the reference implementation judges too tight at
+a critical zone, where a seam cannot be let out, is not a candidate: like a size already returned,
+it comes back among the alternatives with the reason, and when every size is, no size is named and
+`caveats` says why. A size it does name while judging it too tight or too loose somewhere is named
+as the closest there is, with no more confidence than a cold start may claim, and `caveats` says so
+at every level, without naming the zone. A flaw the person has already kept a garment despite, in
+that direction, counts against neither.
+
+A constraint the person declared, a preference at `strength` 1 with `source` `declared`, is held
+the same way: a size the reference implementation judges too tight where the preference rules out
+tight, or too loose where it rules out loose, is not a candidate either. A relaxed or oversized fit
+rules out tight, a fitted or very fitted one loose, and a regular fit both. A garment the person
+kept despite such a flaw does not excuse it: the constraint is what they say now. Inferred from
+history, or with no `strength` written, a preference is a taste, and only moves the ease band.
+
+Each of these reasons is kept back from a report when it speaks about a layer the person lists in
+`never_share` (`04-privacy.md`): the sizes are judged against the body, a constraint is a
+preference, and a size already returned is history. The answer stays the same, and the verifier is
+not told why.
+
+With no size named, `confidence` says how sure the producer is of the comparison that led there,
+not of a size, and `caveats` says why, unless the reason speaks about a layer the person keeps to
+themselves. The reference implementation keeps the confidence it computed for the closest size: no
+size at 0.83 is a confident "none of these fits", where not enough signal is a confidence below
+0.25.
+
+`score`, on an alternative, says how well that size meets its ease bands, from 0 to 1. It is not a
+confidence, and a consumer MUST NOT present it as one: next to a recommended 41 at 0.84, a 42 shown
+at 0.95 reads as the better size, while the 41, whose own score the report does not carry, scored
+1.00.
 
 A consumer MUST NOT present a confidence from another implementation as comparable to its own.
+
+## What an answer rests on
+
+`based_on` counts what an answer used, not what the profile holds. A count of the profile would
+tell the verifier how full it is, at every level, and not what the answer rests on: for a shirt
+compared on five measurements and decided by two preferences, the example profile holds seven and
+four, among them the inseam and a preference about trousers. The reference implementation counts
+the body measurements a garment was compared on, the preferences that decided a zone it compared,
+and the past purchases it read, each event once. A cold start rests on the purchases it
+was derived from, all of the garment's brand, and counts only those. Nothing the person lists in
+`never_share` is counted (`04-privacy.md`).
+
+## Caveats and notes
+
+`caveats` and the notes on alternatives and explanation lines are written for people. Their wording
+is not part of the shape of the answer and changes between implementations and versions, so a
+consumer SHOULD NOT read them as codes.

@@ -8,12 +8,14 @@ things the person could add to make the next answer better.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field, asdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from .mapping import (
     ZONE_MAPPINGS,
+    MAPPED_ZONES,
     PREFERENCE_SHIFT,
     STRETCH_CLASS_FRACTION,
     critical_zones,
@@ -22,6 +24,182 @@ from .mapping import (
 
 SCHEMA_VERSION = "0.1.0"
 IN_TO_CM = 2.54
+
+# A critical zone weighs three times as much as any other. One constant, because it is used
+# twice: to choose the size, and to decide how much of an answer rests on label estimates.
+CRITICAL_WEIGHT = 3.0
+
+# The most a cold start may claim, and the most an answer may claim when the measurements behind
+# it are label estimates. One constant for both, because both rest on the same evidence. A size
+# the explanation calls too tight or too loose somewhere is held to it as well: it is the closest
+# there is, a starting point like a guess from labels, not an answer.
+COLD_START_CEILING = 0.40
+
+# The tolerance a body measurement is taken to have when the profile leaves it out: the wide end
+# of what that kind of measurement usually carries, 1.5 cm for an instrument and 3 cm for anything
+# else. A missing tolerance used to count as half a centimetre, the strictest in any profile, so
+# leaving the field out made a measurement look more precise than declaring it honestly. Two
+# numbers chosen, not measured, both taken from the example profile.
+DEFAULT_TOLERANCE_CM = {
+    "tape_measured": 1.5,
+    "scan_3d": 1.5,
+    "self_reported": 3.0,
+    "inferred_from_history": 3.0,
+    "imported_from_retailer": 3.0,
+    "estimated_from_size_labels": 3.0,
+}
+
+# How far each kind of measurement is trusted, before its own confidence, its tolerance and its
+# age are taken into account.
+SOURCE_WEIGHT = {
+    "scan_3d": 1.0,
+    "tape_measured": 0.9,
+    "imported_from_retailer": 0.6,
+    "inferred_from_history": 0.5,
+    "self_reported": 0.45,
+    "estimated_from_size_labels": 0.25,
+}
+
+# How much a girth's uncertainty grows for each full year since it was measured. A body changes,
+# and a waist taken three years ago is a less precise answer to how wide the waist is now. The
+# lengths of an adult do not change and are left alone. One centimetre a year is a choice, not a
+# measurement.
+AGE_DRIFT_CM_PER_YEAR = 1.0
+
+# How far one outcome moves the ease of a zone, in cm, before the cap. On a girth it is also the
+# yardstick for the outcome's age: a lesson of LEARNED_STEP_CM, learnt on a body that may have
+# moved AGE_DRIFT_CM_PER_YEAR every full year since, weighs LEARNED_STEP_CM / (LEARNED_STEP_CM +
+# that drift) next to the others, the curve along which a tape measurement of the usual
+# tolerance loses precision.
+LEARNED_STEP_CM = 1.5
+
+
+class UnsupportedSchemaVersion(ValueError):
+    """Raised when a document is written to a major version this code cannot read."""
+
+
+class UnreadableDate(ValueError):
+    """Raised when a date the calculation reads is not one this code can read.
+
+    A date that could not be read used to count as no age at all, so measurements taken five
+    years earlier and written "14/03/2021" counted as taken that day: the most favourable age
+    there is, and no less invented than any other. Refusing is the only way not to invent one,
+    and the error names the field, so the date can be corrected where it was written.
+    """
+
+
+# The four levels a report can be serialised at, in increasing order of disclosure.
+DISCLOSURE_LEVELS: tuple[str, ...] = ("result_only", "explained", "scoped", "full")
+
+
+class UnknownDisclosureLevel(ValueError):
+    """Raised when asked for a disclosure level this code does not know.
+
+    Serialisation removes what a level forbids, so an unrecognised level used to remove
+    nothing: "Result_only" produced the full numeric ease, the one output the arithmetic
+    leak exists to prevent. A typo has to fail closed, and refusing is the only way to fail
+    closed without guessing what the caller meant.
+    """
+
+
+def _checked_level(level: object, origin: str) -> str:
+    if level not in DISCLOSURE_LEVELS:
+        raise UnknownDisclosureLevel(
+            f"{origin} asks for disclosure level {level!r}; the known levels are "
+            + ", ".join(DISCLOSURE_LEVELS)
+            + "."
+        )
+    return str(level)
+
+
+def _disclosure_level(profile: dict, requested: str | None) -> str:
+    """The level to serialise at: the one requested, else the person's, else the least.
+
+    The profile's default_level is the person's standing preference. Ignoring it meant that
+    both example profiles, which declare result_only, came out at explained: more disclosure
+    than the person had written down. It is a default, not a ceiling. A request that names a
+    level still gets it, because in this implementation whoever asks is the vault, and
+    whether a verifier may ever receive more than the person's default is vault policy, not
+    something a matcher can decide.
+    """
+    if requested is not None:
+        return _checked_level(requested, "The request")
+    declared = (profile.get("disclosure_defaults") or {}).get("default_level")
+    if declared is not None:
+        return _checked_level(declared, "The fit profile")
+    return DISCLOSURE_LEVELS[0]
+
+
+def _version_notes(profile: dict, garment: dict) -> list[str]:
+    """Refuse a different major version, note a newer minor one.
+
+    A major difference means fields have moved or gone, so reading the document
+    anyway would mean looking for values where they no longer are and answering
+    from what happened to be found. A newer minor version only adds, so the parts
+    this code knows are still where it expects them; ignoring the rest is safe, but
+    the reader deserves to be told the answer was computed from a subset.
+    """
+    def compat(parts: list[int]) -> tuple[int, ...]:
+        # Under a zero major, semantic versioning treats every minor bump as free
+        # to break, and this project is using it that way: 0.2 moves fields that
+        # 0.1 had elsewhere. So while the major is zero the minor is the line that
+        # cannot be crossed; from 1.0 on, the major alone is.
+        return (parts[0],) if parts[0] > 0 else tuple(parts[:2])
+
+    notes = []
+    mine_parts = [int(p) for p in SCHEMA_VERSION.split(".")]
+    mine = compat(mine_parts)
+    for kind, doc in (("fit profile", profile), ("cut profile", garment)):
+        declared = str(doc.get("schema_version", ""))
+        parts = declared.split(".")
+        if not declared or not parts[0].isdigit():
+            raise UnsupportedSchemaVersion(
+                f"The {kind} declares no readable schema_version."
+            )
+        nums = [int(p) for p in parts if p.isdigit()]
+        if len(nums) < 2 or compat(nums) != mine:
+            raise UnsupportedSchemaVersion(
+                f"The {kind} is version {declared}; this implementation reads "
+                f"{SCHEMA_VERSION} and cannot read across that difference."
+            )
+        if len(nums) > 2 and nums[2] > mine_parts[2]:
+            notes.append(
+                f"The {kind} is version {declared}, newer than the {SCHEMA_VERSION} "
+                "this implementation knows. Anything added since was ignored."
+            )
+    return notes
+
+
+def _check_dates(profile: dict) -> None:
+    """Refuse a profile with a date the calculation reads and this code cannot.
+
+    Read are the dates of the measurements this implementation knows, of every outcome and of
+    every preference that gives one. A missing one the schema requires cannot be read either.
+    A date nothing here reads, such as the profile's own updated_at, is a validator's to check.
+    """
+    known = {mapping.body_key for mapping in ZONE_MAPPINGS}
+    measurements = ((profile.get("body") or {}).get("measurements")) or {}
+    unreadable = [
+        f"body.measurements.{key}.observed_at ({measurement.get('observed_at')!r})"
+        for key, measurement in sorted(measurements.items())
+        if key in known and _moment(measurement.get("observed_at")) is None
+    ]
+    unreadable += [
+        f"history[{index}].occurred_at ({item.get('occurred_at')!r})"
+        for index, item in enumerate(profile.get("history", []))
+        if _moment(item.get("occurred_at")) is None
+    ]
+    unreadable += [
+        f"preferences[{index}].updated_at ({pref['updated_at']!r})"
+        for index, pref in enumerate(profile.get("preferences", []))
+        if "updated_at" in pref and _moment(pref["updated_at"]) is None
+    ]
+    if unreadable:
+        raise UnreadableDate(
+            "The fit profile has dates this implementation cannot read: "
+            + ", ".join(unreadable)
+            + ". A date is written as RFC 3339 has it, such as 2026-03-14T18:00:00Z."
+        )
 
 
 # --------------------------------------------------------------------------- loading
@@ -37,6 +215,85 @@ load_cut_profile = _load
 
 def _cm(value: float, unit: str) -> float:
     return value * IN_TO_CM if unit == "in" else float(value)
+
+
+def _body_tolerance_cm(measurement: dict) -> float:
+    """A body measurement's tolerance, in centimetres.
+
+    A declared tolerance is in the unit of its measurement: reading 0.59 in as 0.59 cm made the
+    same person, written in inches, look two and a half times more precise, and could turn a waist
+    judged roomy into one judged too loose. One left out falls back on DEFAULT_TOLERANCE_CM.
+    """
+    if "tolerance" in measurement:
+        return _cm(measurement["tolerance"], measurement["unit"])
+    return DEFAULT_TOLERANCE_CM.get(measurement.get("source"), max(DEFAULT_TOLERANCE_CM.values()))
+
+
+def _now() -> datetime:
+    """The moment of the calculation, in one place, so that a test can hold the clock still."""
+    return datetime.now(timezone.utc)
+
+
+# A date-time as RFC 3339 writes it, the format the schemas name: a date, a T, a time, perhaps a
+# fraction of a second, then Z or an offset, the two letters in either case. Read with a pattern
+# rather than datetime.fromisoformat, which reads more than this, and reads it differently from
+# one Python version to the next.
+_DATE_TIME = re.compile(
+    r"(\d{4})-(\d{2})-(\d{2})[Tt](\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?"
+    r"(?:([Zz])|([+-])(\d{2}):([0-5]\d))"
+)
+
+
+def _moment(stamp: object) -> datetime | None:
+    """A date from a profile as a moment, or None if it is not a date-time RFC 3339 writes."""
+    match = _DATE_TIME.fullmatch(stamp) if isinstance(stamp, str) else None
+    if match is None:
+        return None
+    year, month, day, hour, minute, second = (int(part) for part in match.groups()[:6])
+    fraction, zulu, sign, offset_hours, offset_minutes = match.groups()[6:]
+    # A leap second, which RFC 3339 allows and datetime cannot hold, reads as the one before.
+    second = 59 if second == 60 else second
+    try:
+        offset = timedelta(hours=int(offset_hours or 0), minutes=int(offset_minutes or 0))
+        zone = timezone.utc if zulu else timezone(-offset if sign == "-" else offset)
+        microsecond = int((fraction or "0")[:6].ljust(6, "0"))
+        return datetime(year, month, day, hour, minute, second, microsecond, tzinfo=zone)
+    except ValueError:
+        return None
+
+
+def _years_since(stamp: object, now: datetime) -> int:
+    """Full years, of 365 days, between a date in the profile and the calculation.
+
+    recommend refuses a profile with a date it cannot read before any age is taken. Counting one
+    as no age at all, as this used to, gave it the most favourable age there is.
+    """
+    then = _moment(stamp)
+    if then is None:
+        raise UnreadableDate(
+            f"The fit profile has a date this implementation cannot read: {stamp!r}."
+        )
+    return max(0, (now - then).days // 365)
+
+
+def _measurement_quality(measurement: dict, linear: bool, now: datetime) -> float:
+    """How far an answer can lean on one body measurement, from 0 to 1.
+
+    Its source and the producer's own confidence say how far the number is trusted. Its
+    tolerance says how precise it is: wider than the usual one for its source, as
+    DEFAULT_TOLERANCE_CM has it, and the measurement counts for less in proportion, so a tape
+    measurement declared within 3 cm counts like a remembered one within 3. Narrower than usual
+    earns nothing extra. A girth also loses AGE_DRIFT_CM_PER_YEAR of precision for every full
+    year since it was taken.
+    """
+    source = measurement.get("source", "self_reported")
+    trust = SOURCE_WEIGHT.get(source, 0.4) * float(measurement.get("confidence", 0.5))
+    usual = DEFAULT_TOLERANCE_CM.get(source, max(DEFAULT_TOLERANCE_CM.values()))
+    uncertainty = _body_tolerance_cm(measurement)
+    if not linear:
+        uncertainty += AGE_DRIFT_CM_PER_YEAR * _years_since(measurement.get("observed_at"), now)
+    precision = min(1.0, usual / uncertainty) if uncertainty > 0 else 1.0
+    return trust * precision
 
 
 # --------------------------------------------------------------------------- results
@@ -57,7 +314,7 @@ class MatchReport:
     cut_profile_id: str
     recommended_size: str | None
     confidence: float
-    disclosure_level: str = "explained"
+    disclosure_level: str = "result_only"
     alternatives: list[dict] = field(default_factory=list)
     explanation: list[ExplanationLine] = field(default_factory=list)
     based_on: dict = field(default_factory=dict)
@@ -65,56 +322,191 @@ class MatchReport:
     improve_by: list[str] = field(default_factory=list)
     computed_at: str = ""
     correctable: bool = True
+    # Zones whose explanation never leaves, because the person listed their measurement in
+    # never_share. Kept on the report and never serialised: to_json reads it to drop the lines.
+    withheld_zones: list[str] = field(default_factory=list)
+    # Body measurements under names this implementation does not know. Kept on the report and
+    # named by to_json only where an explanation is sent.
+    unknown_measurements: list[str] = field(default_factory=list)
+    # Sentences that speak about a layer the person listed whole in never_share: caveats, and
+    # notes on alternatives or explanation lines. Kept on the report and never serialised.
+    withheld_sentences: list[str] = field(default_factory=list)
+    # Whether the bands of the explanation stay on the report at every level: they carry the
+    # preferences and the history, and the person listed one of them in never_share.
+    withheld_bands: bool = False
 
     def to_json(self) -> dict:
         """Serialise at the declared disclosure level.
 
+        At result_only the report says what kind of answer it is and nothing about the profile:
+        what the answer rests on and what would improve it stay on the report, for the person,
+        and leave from explained up. The same counts and the same suggestion, reaching every shop
+        Luca asked for a shirt, were nearly a signature.
+
         At ``result_only`` and ``explained`` the numeric ease values are stripped. Publishing both
         the ease and the garment measurement would let anyone subtract one from the other and
-        recover the body measurement the person chose not to send.
+        recover the body measurement the person chose not to send. The numbers are admitted by
+        naming the levels that allow them, and a level this code does not know is refused, so a
+        typo can only ever stop an answer, never widen it.
+
+        The band a zone was judged against leaves only at full. It is the garment's, moved by the
+        person's preferences and by what their history taught, and the shop knows the band it
+        published: Luca's shoulders at 0.5 to 2.5 cm, against the 0 to 2 of the Oxford, told it
+        about the shirts he had sent back, at scoped, which promises the measurements this
+        garment needs. With preferences or history in never_share it leaves at no level and from
+        no zone: taken out only where it moved, it would say where.
+
+        A zone whose measurement the person listed in never_share is left out altogether,
+        judgement included: "as cut", read against the published garment and its ease band,
+        narrows the body measurement to the width of the band.
+
+        A measurement under a name this implementation does not know is named, so that the person
+        can find it, but only where an explanation is sent: at result_only the name would tell
+        the verifier what the profile holds, and nothing more.
+
+        A layer the person listed whole in never_share is not told through what the report says
+        either. A caveat, or the note of an alternative or of an explanation line, that speaks
+        about it stays on the report, for the person, and an alternative goes with its note: its
+        score, often the highest, would say that it was set aside. From explained up one sentence
+        says that part of the reasoning was kept back; at result_only nothing, as for the zones.
         """
+        level = _checked_level(self.disclosure_level, "This report")
+        held = set(self.withheld_sentences)
+        caveats = [caveat for caveat in self.caveats if caveat not in held]
         out = {
             "schema_version": SCHEMA_VERSION,
             "cut_profile_id": self.cut_profile_id,
             "computed_at": self.computed_at,
-            "disclosure_level": self.disclosure_level,
+            "disclosure_level": level,
             "recommended_size": self.recommended_size,
             "confidence": round(self.confidence, 2),
             "correctable": True,
             "based_on": self.based_on,
-            "caveats": self.caveats,
+            "caveats": caveats,
             "improve_by": self.improve_by,
         }
-        if self.disclosure_level == "result_only":
+        if level == "result_only":
+            del out["based_on"], out["improve_by"]
             return out
-        out["alternatives"] = self.alternatives
+        alternatives = [alt for alt in self.alternatives if alt.get("note") not in held]
+        out["alternatives"] = alternatives
+        numeric = level in ("scoped", "full")
         lines = []
+        band_kept_back = False
         for line in self.explanation:
+            if line.zone in self.withheld_zones or line.note in held:
+                continue
             d = {k: v for k, v in asdict(line).items() if v is not None}
-            if self.disclosure_level == "explained":
+            if not numeric:
                 d.pop("ease_cm", None)
                 d.pop("intended_ease_cm", None)
-            elif d.get("intended_ease_cm"):
-                d["intended_ease_cm"] = list(d["intended_ease_cm"])
+            elif level == "full" and not self.withheld_bands:
+                if d.get("intended_ease_cm"):
+                    d["intended_ease_cm"] = list(d["intended_ease_cm"])
+            else:
+                band_kept_back = band_kept_back or (level == "full" and "intended_ease_cm" in d)
+                d.pop("intended_ease_cm", None)
             lines.append(d)
         out["explanation"] = lines
+        # Said only where an explanation is sent: at result_only there is nothing to withhold,
+        # and any of these sentences would only tell the verifier something about the profile.
+        told = []
+        if any(line.zone in self.withheld_zones for line in self.explanation):
+            told.append("Some zones are not explained here, at the person's request.")
+        # A sentence is held back only once it is in the report, so any at all is one fewer; a
+        # band kept back at full is reasoning kept back too.
+        if held or band_kept_back:
+            told.append("Some of the reasoning is not given here, at the person's request.")
+        if self.unknown_measurements:
+            told.append(
+                "The profile has measurements under names this implementation does not know, "
+                "so they were not used: " + ", ".join(self.unknown_measurements) + "."
+            )
+        if told:
+            out["caveats"] = caveats + told
         return out
 
 
 # --------------------------------------------------------------------------- helpers
 
 
-def _preference_shift(profile: dict, category: str, zone: str, linear: bool) -> float:
-    shift = 0.0
-    for pref in profile.get("preferences", []):
-        if pref.get("category") != category:
-            continue
-        if pref.get("zone") not in (zone, "overall"):
-            continue
-        weight = float(pref.get("strength", 1.0)) * float(pref.get("confidence", 0.7))
-        base = PREFERENCE_SHIFT.get(pref.get("preference", "regular"), 0.0)
-        shift += base * weight * (0.25 if linear else 1.0)
-    return shift
+# Where a date that is not there stands among the others: before all of them. One that is there
+# and cannot be read never gets this far, since recommend refuses it.
+UNREADABLE = datetime.min.replace(tzinfo=timezone.utc)
+
+
+def _when(stamp: object) -> datetime:
+    """A timestamp as a moment, for ordering. One that is missing comes first.
+
+    Dates are compared as moments, not as text: 2026-05-05T02:00:00+02:00 is midnight in UTC
+    and comes before 2026-05-05T01:00:00Z, which text ordering gets the wrong way round.
+    """
+    moment = _moment(stamp)
+    return UNREADABLE if moment is None else moment
+
+
+def _preference_shift(profile: dict, category: str, zone: str, scale: float) -> float:
+    """How far the person's stated wishes move the ease band of one zone.
+
+    One preference decides each zone. One about the zone itself wins over one about the
+    garment overall; between two at the same level, what the person declared wins over what a
+    system inferred, and then the more recent wins. Preferences used to be added together, so
+    a repeated import counted twice, "relaxed overall" widened shoulders the person had asked
+    to keep regular, and a declared wish and an inferred one cancelled out without anyone
+    being told.
+
+    The shift is taken at the zone's own scale, the one a learned offset is taken at. It used to
+    be whole on every girth, so "relaxed" asked a collar for four more centimetres, where a
+    centimetre is a whole size: every collar of a shirt came out tight, and one three
+    centimetres larger than the neck was judged snug.
+    """
+    pref = _deciding_preference(profile, category, zone)
+    if pref is None:
+        return 0.0
+    weight = float(pref.get("strength", 1.0)) * float(pref.get("confidence", 0.7))
+    base = PREFERENCE_SHIFT.get(pref.get("preference", "regular"), 0.0)
+    return base * weight * scale
+
+
+def _deciding_preference(profile: dict, category: str, zone: str) -> dict | None:
+    """The one preference that decides a zone, chosen as _preference_shift says, or None.
+
+    The same one says how far the ease band moves and whether the zone has a constraint, so two
+    preferences never speak for one zone.
+    """
+    candidates = [
+        pref
+        for pref in profile.get("preferences", [])
+        if pref.get("category") == category and pref.get("zone") in (zone, "overall")
+    ]
+    if not candidates:
+        return None
+    # Among equals, the one written last: max keeps the first of its ties, so read backwards.
+    return max(
+        reversed(candidates),
+        key=lambda p: (
+            p.get("zone") == zone,
+            p.get("source") == "declared",
+            _when(p.get("updated_at")),
+        ),
+    )
+
+
+def _ruled_out(profile: dict, category: str, zone: str) -> frozenset[str]:
+    """What the person has said they cannot wear at one zone: the directions ruled out, if any.
+
+    A constraint is a preference the person declared at full strength. One inferred from history
+    is a system's guess at what the person wants, and a guess is not a "never". One with no
+    strength written is a taste: the shift takes it whole, but a constraint has to be said, not
+    assumed. Strength used to scale the shift and nothing else, so "I cannot wear anything tight
+    at the neck" weighed like "I prefer it relaxed", only more.
+    """
+    pref = _deciding_preference(profile, category, zone)
+    if pref is None or pref.get("source") != "declared" or "strength" not in pref:
+        return frozenset()
+    if float(pref["strength"]) < 1.0:
+        return frozenset()
+    return RULED_OUT.get(pref.get("preference"), frozenset())
 
 
 def _usable_stretch(garment: dict) -> float:
@@ -124,6 +516,33 @@ def _usable_stretch(garment: dict) -> float:
         # Only half of the comfortable extension is treated as usable for fit.
         return float(pct) / 100.0 * 0.5
     return STRETCH_CLASS_FRACTION.get(fabric.get("stretch_class", "none"), 0.0)
+
+
+def _label_key(label: object) -> str | None:
+    """A size label as a person reads it, to line a past purchase up against a garment's sizes.
+
+    The history and the garment are written by different people, and labels compared letter by
+    letter missed for a space: a 41 sent back and recorded as "41 " was recommended again, and
+    a purchase written that way taught the cold start nothing. Spaces at the ends, repeated
+    spaces and capitals do not make another label. Anything else does: "IT 41" is not "41",
+    because reading it so would take knowing that IT is a size system, which is the size-chart
+    knowledge this model does without.
+    """
+    if label is None:
+        return None
+    return " ".join(str(label).split()).casefold()
+
+
+def _reference_key(reference: object) -> str | None:
+    """A reference to a Cut Profile as it is meant, to join a past purchase to this garment.
+
+    A size sent back and recorded against an identifier with a space at the end pointed at no
+    document, and the size was recommended again. Spaces around an identifier do not make another
+    one. Its capitals do, because an identifier may be a URL or a key where they count, and
+    reading past them would join two documents. An empty reference is no reference.
+    """
+    key = reference.strip() if isinstance(reference, str) else ""
+    return key or None
 
 
 RETURNED_FOR_SIZE = {
@@ -141,54 +560,238 @@ def _sizes_already_returned(profile: dict, garment: dict) -> set[str]:
     Keyed on cut_profile_id and nothing else: a brand or style match means a
     similar garment, which is a weaker claim and already handled by the learned
     offset. "kept" and "returned_other" are left out because neither says the
-    size was wrong.
+    size was wrong. The labels come back as _label_key reads them, and the garment's
+    are read the same way before they are compared; the identifiers are compared as
+    _reference_key reads them.
     """
-    cut_id = garment.get("cut_profile_id")
+    cut_id = _reference_key(garment.get("cut_profile_id"))
     if not cut_id:
         return set()
     labels = set()
     for entry in profile.get("history", []):
         ref = entry.get("garment_ref", {})
-        if ref.get("cut_profile_id") != cut_id:
+        if _reference_key(ref.get("cut_profile_id")) != cut_id:
             continue
         if entry.get("outcome") in RETURNED_FOR_SIZE:
-            labels.add(ref.get("size_label"))
+            labels.add(_label_key(ref.get("size_label")))
     return {l for l in labels if l}
 
 
-def _history_offset(profile: dict, garment: dict) -> tuple[float, int, int]:
-    """Learned bias from what actually happened, in cm of ease.
+# Which way an outcome pushes the ease when it does not say where the garment was wrong.
+OUTCOME_DIRECTION = {
+    "returned_too_small": 1.0,
+    "exchanged_for_larger": 1.0,
+    "returned_too_large": -1.0,
+    "exchanged_for_smaller": -1.0,
+}
 
-    Returns (offset_cm, total_relevant_outcomes, same_brand_outcomes). Same-brand outcomes count
-    double, because sizing drift is overwhelmingly brand-specific.
+# Which way, and how far, a per-zone verdict pushes the ease of that zone.
+VERDICT_DIRECTION = {"too_tight": 1.0, "snug": 0.5, "right": 0.0, "roomy": -0.5, "too_loose": -1.0}
+
+# The direction of a flaw, from the verdict that names it. "right" names no flaw.
+FLAW_DIRECTION = {"too_tight": "tight", "snug": "tight", "roomy": "loose", "too_loose": "loose"}
+
+# How much a flaw counts when the person has already kept a garment despite it, in that
+# zone and in that direction. Half is a choice, not a measurement: one number to change
+# when evidence says so.
+TOLERATED_WEIGHT = 0.5
+
+# What a preference held as a constraint rules out, in the directions of FLAW_DIRECTION. A
+# relaxed or oversized fit rules out tight, a fitted or very fitted one loose, and a regular fit
+# both: it asks for neither.
+RULED_OUT = {
+    "very_fitted": frozenset({"loose"}),
+    "fitted": frozenset({"loose"}),
+    "regular": frozenset({"tight", "loose"}),
+    "relaxed": frozenset({"tight"}),
+    "oversized": frozenset({"tight"}),
+}
+
+
+def _same_category(ref: dict, garment: dict) -> bool:
+    """Whether a past garment is the same kind of garment as this one.
+
+    An entry without a category used to be dropped, and every lesson it carried with it: an
+    importer that could not map a shop's categories onto the schema's, and honestly left the
+    field out, erased the whole history. Without a category an entry still counts when it is
+    the same model, the same style_id of the same brand, which the specification defines as the
+    same design in the same cut. Any other entry without one stays out: guessing what kind of
+    garment it was would be inventing it.
     """
-    category = garment.get("category")
+    category = ref.get("category")
+    if category is not None:
+        return category == garment.get("category")
+    return (
+        bool(ref.get("brand"))
+        and bool(ref.get("style_id"))
+        and ref.get("brand") == garment.get("brand")
+        and ref.get("style_id") == garment.get("style_id")
+    )
+
+
+def _history(profile: dict) -> list[dict]:
+    """The history, with every event in it once.
+
+    Entries carry no identifier, so the same event written twice, by an import run again or by the
+    person and the shop recording one purchase in the same terms, used to count twice, and the
+    answer looked surer for reading the same thing again. Who wrote an entry and which import
+    brought it do not make it another event; a date is compared as a moment, not as text, a size
+    label as _label_key reads it and a reference to a Cut Profile as _reference_key does; the
+    order of a list is not part of what it says, and an
+    empty list says no more than a missing one. Entries that differ in anything else stay two:
+    deciding they are one would be guessing.
+    """
+    seen: set[str] = set()
+    events = []
+    for item in profile.get("history", []):
+        event = {key: value for key, value in item.items() if key not in ("source", "import_ref")}
+        moment = _when(item.get("occurred_at"))
+        if moment != UNREADABLE:
+            event["occurred_at"] = moment.timestamp()
+        ref = event.get("garment_ref")
+        if isinstance(ref, dict) and "size_label" in ref:
+            event["garment_ref"] = dict(ref, size_label=_label_key(ref["size_label"]))
+        if isinstance(ref, dict) and "cut_profile_id" in ref:
+            event["garment_ref"] = dict(
+                event["garment_ref"], cut_profile_id=_reference_key(ref["cut_profile_id"])
+            )
+        for name in ("zone_feedback", "kept_despite"):
+            if event.get(name):
+                event[name] = sorted(event[name], key=lambda v: json.dumps(v, sort_keys=True))
+            else:
+                event.pop(name, None)
+        fingerprint = json.dumps(event, sort_keys=True)
+        if fingerprint not in seen:
+            seen.add(fingerprint)
+            events.append(item)
+    return events
+
+
+def _history_offsets(
+    profile: dict, garment: dict, now: datetime
+) -> tuple[dict[str, float], int, int, dict[str, float]]:
+    """Learned bias from what actually happened, in cm of ease, zone by zone.
+
+    Returns (offsets_by_zone, total_relevant_outcomes, same_brand_outcomes, evidence_by_zone).
+    Same-brand outcomes count double, because sizing drift is overwhelmingly brand-specific. A
+    returned or exchanged garment that says where it was wrong, through zone_feedback, moves only
+    those zones, each in the direction of its verdict; a verdict on "overall" covers the zones not
+    named one by one. Only an outcome that does not say where moves every zone the same way. A
+    kept garment moves nothing here: what it records is what was accepted, and _tolerances reads
+    that.
+
+    On a girth a recent outcome outweighs an old one. An outcome tells how a garment fitted the
+    body of that day, and a body moves at the girths, so each one weighs LEARNED_STEP_CM /
+    (LEARNED_STEP_CM + AGE_DRIFT_CM_PER_YEAR for every full year since) next to the others. A
+    return from years ago used to weigh as much as last month's, and could cancel it. The lengths
+    of an adult do not move, and there every outcome keeps its weight. Age alone moves no band:
+    outcomes of one age keep the average they had, and what changes is how sure the answer is,
+    through evidence_by_zone, as it is for a measurement.
+    """
     brand = garment.get("brand")
-    direction = 0.0
+    directions = {m.zone: 0.0 for m in ZONE_MAPPINGS}
+    mass = {m.zone: 0.0 for m in ZONE_MAPPINGS}
+    evidence = {m.zone: 0.0 for m in ZONE_MAPPINGS}
     total = 0
     same_brand = 0
-    for item in profile.get("history", []):
+    for item in _history(profile):
         ref = item.get("garment_ref", {})
-        if ref.get("category") != category:
+        if not _same_category(ref, garment):
             continue
         weight = 1.0
         total += 1
         if brand and ref.get("brand") == brand:
             weight = 2.0
             same_brand += 1
-        outcome = item.get("outcome")
-        if outcome in ("returned_too_small", "exchanged_for_larger"):
-            direction += weight
-        elif outcome in ("returned_too_large", "exchanged_for_smaller"):
-            direction -= weight
-        elif outcome == "kept" and item.get("kept_despite"):
-            # Kept in spite of something: a real signal, but a weak one. The person tolerated it.
-            direction += 0.0
+        drift = AGE_DRIFT_CM_PER_YEAR * _years_since(item.get("occurred_at"), now)
+        outcome = OUTCOME_DIRECTION.get(item.get("outcome"))
+        verdicts = {f.get("zone"): f.get("verdict") for f in item.get("zone_feedback") or []}
+        for mapping in ZONE_MAPPINGS:
+            zone = mapping.zone
+            recency = 1.0 if mapping.linear else LEARNED_STEP_CM / (LEARNED_STEP_CM + drift)
+            mass[zone] += recency
+            evidence[zone] += weight * recency
+            if outcome is None:
+                continue
+            if verdicts:
+                verdict = verdicts.get(zone, verdicts.get("overall"))
+                directions[zone] += weight * recency * VERDICT_DIRECTION.get(verdict, 0.0)
+            else:
+                directions[zone] += weight * recency * outcome
     if total == 0:
-        return 0.0, 0, 0
-    # 1.5 cm of ease per net weighted step, capped so history can nudge but not override the body.
-    offset = max(-3.0, min(3.0, 1.5 * direction / max(1.0, total)))
-    return offset, total, same_brand
+        return {}, 0, 0, {}
+    # LEARNED_STEP_CM per net weighted step, capped so history can nudge but not override the body.
+    offsets = {
+        zone: max(-3.0, min(3.0, LEARNED_STEP_CM * direction / mass[zone]))
+        for zone, direction in directions.items()
+    }
+    return offsets, total, same_brand, evidence
+
+
+def _tolerances(profile: dict, garment: dict) -> dict[str, set[str]]:
+    """The flaws this person has already accepted, zone by zone, in this category.
+
+    A garment kept despite a zone records a tolerated compromise: a waist found roomy, and the
+    shirt kept anyway. kept_despite says which zone; the verdict on that zone in the same entry
+    says which way. A zone listed without a verdict of its own says what was tolerated but not
+    which way, and teaches nothing, because guessing the direction would be inventing the lesson.
+    The compromise is the person's, not the brand's, so any brand counts. And it is a set: the
+    same garment imported twice teaches it once.
+    """
+    tolerated: dict[str, set[str]] = {}
+    for item in profile.get("history", []):
+        if item.get("outcome") != "kept":
+            continue
+        if not _same_category(item.get("garment_ref", {}), garment):
+            continue
+        verdicts = {f.get("zone"): f.get("verdict") for f in item.get("zone_feedback") or []}
+        for zone in item.get("kept_despite") or []:
+            direction = FLAW_DIRECTION.get(verdicts.get(zone))
+            if direction:
+                tolerated.setdefault(zone, set()).add(direction)
+    return tolerated
+
+
+def _clearly_wrong(
+    lines: list[ExplanationLine], tolerated: dict[str, set[str]]
+) -> list[ExplanationLine]:
+    """The zones a size is judged clearly wrong at, as far as this person is concerned.
+
+    Too tight or too loose is the explanation saying that the size does not fit there, beyond
+    what the tolerances of both measurements account for, and the answer is held to it. A flaw
+    the person has already kept a garment despite, in that direction, is the exception: the
+    judgement still says so, as it always does, but for this person it is no reason to doubt
+    the size.
+    """
+    return [
+        line
+        for line in lines
+        if line.assessment in ("too_tight", "too_loose")
+        and FLAW_DIRECTION[line.assessment] not in tolerated.get(line.zone, ())
+    ]
+
+
+def _cannot_be_let_out(lines: list[ExplanationLine], tolerated: dict[str, set[str]]) -> bool:
+    """Whether a size is too tight at a critical zone, where a seam cannot be let out."""
+    return any(
+        line.critical and line.assessment == "too_tight"
+        for line in _clearly_wrong(lines, tolerated)
+    )
+
+
+def _breaks_a_constraint(
+    lines: list[ExplanationLine], ruled_out: dict[str, frozenset[str]]
+) -> bool:
+    """Whether a size is too tight or too loose where the person has ruled that out.
+
+    Unlike in _clearly_wrong, a garment the person once kept despite that flaw does not excuse
+    it: the constraint is what the person says now, the kept garment what they accepted then.
+    """
+    return any(
+        line.assessment in ("too_tight", "too_loose")
+        and FLAW_DIRECTION[line.assessment] in ruled_out.get(line.zone, ())
+        for line in lines
+    )
 
 
 def _assess(ease: float, lo: float, hi: float, slack: float) -> str:
@@ -205,20 +808,56 @@ def _assess(ease: float, lo: float, hi: float, slack: float) -> str:
 
 # --------------------------------------------------------------------------- the matcher
 
+# The two reasons a zone goes unevaluated, as its explanation line says them.
+UNPUBLISHED = "the garment does not publish this measurement"
+UNMEASURED = "no matching body measurement in the profile"
 
-def recommend(profile: dict, garment: dict, disclosure_level: str = "explained") -> MatchReport:
+
+def recommend(
+    profile: dict,
+    garment: dict,
+    disclosure_level: str | None = None,
+    now: datetime | None = None,
+) -> MatchReport:
+    # How old a measurement is depends on the day of the calculation. A caller that needs the
+    # same answer on any day, a test or a demo, passes the day.
+    now = now or _now()
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=timezone.utc)
+    disclosure_level = _disclosure_level(profile, disclosure_level)
+    withheld_zones = _withheld_zones(profile)
+    # What the report says about a layer the person listed whole in never_share stays on the
+    # report, for the person, and to_json keeps it from the verifier. With the history listed,
+    # "Sizes already returned for this exact garment were removed from the candidates: 41."
+    # used to tell the shop, at every level, which size the person had sent back.
+    never = _never_shared(profile)
+    held_back: list[str] = []
+
+    def about(sentence: str, *layers: str) -> str:
+        """The sentence, held back from the verifier if it speaks about a layer kept private."""
+        if never.intersection(layers):
+            held_back.append(sentence)
+        return sentence
+
     category = garment.get("category", "")
     flat = garment.get("measurement_method") == "flat_laid"
     crit = critical_zones(category, garment)
     stretch = _usable_stretch(garment)
     prod_tol = garment.get("production_tolerance") or {"value": 1.0, "unit": "cm"}
     prod_tol_cm = _cm(prod_tol["value"], prod_tol["unit"])
+    version_notes = _version_notes(profile, garment)
+    _check_dates(profile)
     declared_ease = garment.get("intended_ease") or {}
 
     body = ((profile.get("body") or {}).get("measurements")) or {}
-    history_offset, history_n, brand_history_n = _history_offset(profile, garment)
+    unknown_measurements = _unknown_measurements(profile, body)
+    history_offsets, history_n, brand_history_n, history_evidence = _history_offsets(
+        profile, garment, now
+    )
+    tolerated = _tolerances(profile, garment)
+    ruled_out = {m.zone: _ruled_out(profile, category, m.zone) for m in ZONE_MAPPINGS}
 
-    caveats: list[str] = []
+    caveats: list[str] = list(version_notes)
     improve_by: list[str] = []
     fallback_zones = 0
     reversed_ease_zones: set[str] = set()
@@ -236,7 +875,18 @@ def recommend(profile: dict, garment: dict, disclosure_level: str = "explained")
         - known_keys
     )
 
+    # The same silence, one vocabulary over. A zone with no mapping is dropped whether the garment
+    # named it or our own category default did, and the answer comes out looking as complete as one
+    # where every zone was weighed.
+    unreachable_critical = sorted(crit - MAPPED_ZONES)
+    unused_ease_zones = sorted(set(declared_ease) - MAPPED_ZONES)
+
     scored: list[tuple[float, str, list[ExplanationLine]]] = []
+    # What the answer rests on, for based_on: the measurements compared, the preferences that
+    # decided a zone compared, and whether what the history taught moved one.
+    compared: set[str] = set()
+    deciding: list[dict] = []
+    offset_applied = False
 
     for size in garment.get("sizes", []):
         label = size["size_label"]
@@ -250,6 +900,19 @@ def recommend(profile: dict, garment: dict, disclosure_level: str = "explained")
             bm = body.get(mapping.body_key)
             is_critical = mapping.zone in crit
             if gm is None:
+                if is_critical:
+                    # A critical zone the garment never published is not the same as a zone this
+                    # category does not have. Skipping it took the zone out of the denominator
+                    # too, so a document that left out the shoulders of a shirt scored like one
+                    # that measured them and found them right.
+                    lines.append(
+                        ExplanationLine(
+                            zone=mapping.zone,
+                            assessment="unknown",
+                            critical=True,
+                            note=UNPUBLISHED,
+                        )
+                    )
                 continue
             if bm is None:
                 lines.append(
@@ -257,10 +920,17 @@ def recommend(profile: dict, garment: dict, disclosure_level: str = "explained")
                         zone=mapping.zone,
                         assessment="unknown",
                         critical=is_critical,
-                        note="no matching body measurement in the profile",
+                        note=UNMEASURED,
                     )
                 )
                 continue
+
+            compared.add(mapping.body_key)
+            preference = _deciding_preference(profile, category, mapping.zone)
+            if preference is not None and all(preference is not p for p in deciding):
+                deciding.append(preference)
+            if abs(history_offsets.get(mapping.zone, 0.0)) > 0.01:
+                offset_applied = True
 
             g_cm = _cm(gm["value"], gm["unit"])
             if flat and mapping.doubles_when_flat_laid:
@@ -286,11 +956,13 @@ def recommend(profile: dict, garment: dict, disclosure_level: str = "explained")
                 lo, hi = default_ease(category, mapping.zone, mapping.linear)
                 fallback_zones += 1
 
-            shift = _preference_shift(profile, category, mapping.zone, mapping.linear)
-            shift += history_offset * mapping.offset_scale
+            shift = _preference_shift(profile, category, mapping.zone, mapping.offset_scale)
+            shift += history_offsets.get(mapping.zone, 0.0) * mapping.offset_scale
             lo, hi = lo + shift, hi + shift
 
-            meas_tol = float(gm.get("tolerance", prod_tol_cm)) + float(bm.get("tolerance", 0.5))
+            # A garment's tolerance is in the unit of its measurement too.
+            garment_tol = _cm(gm["tolerance"], gm["unit"]) if "tolerance" in gm else prod_tol_cm
+            meas_tol = garment_tol + _body_tolerance_cm(bm)
             slack = meas_tol
             assessment = _assess(ease, lo, hi, slack)
 
@@ -305,7 +977,10 @@ def recommend(profile: dict, garment: dict, disclosure_level: str = "explained")
             zone_penalty = distance / scale
             if is_critical and ease < lo:
                 zone_penalty *= 1.5  # too tight in a zone that cannot be let out
-            w = 3.0 if is_critical else 1.0
+            missed = "loose" if ease > hi else "tight"
+            if distance and missed in tolerated.get(mapping.zone, ()):
+                zone_penalty *= TOLERATED_WEIGHT  # a flaw this person has kept a garment despite
+            w = CRITICAL_WEIGHT if is_critical else 1.0
             penalty += zone_penalty * w
             weight_total += w
 
@@ -334,24 +1009,39 @@ def recommend(profile: dict, garment: dict, disclosure_level: str = "explained")
     # correctability the specification promises purely nominal. The entry does not
     # outweigh the calculation, it removes one option from it.
     returned_labels = _sizes_already_returned(profile, garment)
-    rejected = [t for t in scored if t[1] in returned_labels]
+    rejected = [t for t in scored if _label_key(t[1]) in returned_labels]
     all_returned = bool(rejected) and len(rejected) == len(scored)
     if rejected and not all_returned:
-        scored = [t for t in scored if t[1] not in returned_labels]
+        scored = [t for t in scored if _label_key(t[1]) not in returned_labels]
 
-    computed_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    based_on = {
-        "body_signals": len(body),
-        "preference_signals": len(profile.get("preferences", [])),
-        "history_signals": history_n,
-        "brand_specific_history_signals": brand_history_n,
-        "learned_offset_applied": abs(history_offset) > 0.01,
-    }
+    # A size judged too tight where the garment cannot be let out does not fit, however it does
+    # elsewhere and however it compares with the others. Like a size already returned, it leaves
+    # the candidates and comes back among the alternatives with the reason. The scores weigh such
+    # a zone heavily already, so this seldom changes which size wins. It matters when every size
+    # is too tight there: the answer used to be the least tight of them, named with the confidence
+    # of one that fits. A size outside a constraint the person declared is held the same way, and
+    # comes back with a reason of its own, which names neither the zone nor the preference.
+    unfit = (
+        []
+        if all_returned
+        else [
+            t
+            for t in scored
+            if _cannot_be_let_out(t[2], tolerated) or _breaks_a_constraint(t[2], ruled_out)
+        ]
+    )
+    # The ones ruled out by the person's constraint alone, not by where they cannot be let out.
+    by_constraint = [t for t in unfit if not _cannot_be_let_out(t[2], tolerated)]
+    nothing_fits = bool(unfit) and len(unfit) == len(scored)
+    if unfit and not nothing_fits:
+        scored = [t for t in scored if all(t is not u for u in unfit)]
+
+    computed_at = now.isoformat(timespec="seconds")
 
     if not scored:
         # Cold start: nothing to compare numerically. Fall back on what the person actually wore.
         # This path is the whole argument for the history layer — it works with zero measurements.
-        label, conf, notes = _history_only_size(profile, garment)
+        label, conf, notes, purchases = _history_only_size(profile, garment)
         # Which side is empty decides who is being told to do something. Blaming the
         # profile when the garment carries no measurements sends the one person who
         # cannot fix it off to measure themselves again.
@@ -361,7 +1051,11 @@ def recommend(profile: dict, garment: dict, disclosure_level: str = "explained")
         nothing_to_compare = (
             "No zone could be compared: this garment publishes no measurements."
             if not garment_has_measurements
-            else "No zone could be compared: the profile has no measurements this garment can be matched against."
+            else about(
+                "No zone could be compared: the profile has no measurements this garment can be "
+                "matched against.",
+                "body",
+            )
         )
         return MatchReport(
             cut_profile_id=garment.get("cut_profile_id", ""),
@@ -369,18 +1063,34 @@ def recommend(profile: dict, garment: dict, disclosure_level: str = "explained")
             confidence=conf,
             disclosure_level=disclosure_level,
             explanation=[
-                ExplanationLine(zone="overall", assessment="unknown", note=n) for n in notes
+                ExplanationLine(zone="overall", assessment="unknown", note=about(n, "history"))
+                for n in notes
             ],
-            based_on=based_on,
+            # The answer rests on the purchases it was derived from, all of the garment's brand:
+            # those of other brands are refused here, and nothing was compared.
+            based_on=_based_on(
+                profile,
+                compared=set(),
+                preferences=0,
+                history=purchases,
+                same_brand=purchases if garment.get("brand") else 0,
+                offset_applied=False,
+            ),
             caveats=(
                 [nothing_to_compare]
-                + (["Answer derived from past purchases alone."] if label else [])
+                + ([about("Answer derived from past purchases alone.", "history")] if label else [])
                 # Explanation is withheld at result_only, so a reason that lives only
-                # there is a reason the reader never gets.
-                + [n for n in notes if "size system" in n]
+                # there is a reason the reader never gets. With no size named, the notes
+                # say why the history could not be used; with one named, they count the
+                # purchases behind it, and that count stays out of a result_only answer.
+                + ([] if label else notes)
+                + version_notes
             ),
             improve_by=_improvements(body, profile, garment),
             computed_at=computed_at,
+            withheld_zones=withheld_zones,
+            unknown_measurements=unknown_measurements,
+            withheld_sentences=held_back,
         )
 
     best_score, best_label, best_lines = scored[0]
@@ -391,11 +1101,40 @@ def recommend(profile: dict, garment: dict, disclosure_level: str = "explained")
         lines=best_lines,
         best=best_score,
         runner_up=runner_up,
-        history_n=history_n,
-        brand_history_n=brand_history_n,
+        history_evidence=history_evidence,
         fallback_zones=fallback_zones,
         n_sizes=len(scored),
+        unreachable_critical_n=len(unreachable_critical),
+        now=now,
     )
+
+    ceiling = _label_estimate_ceiling(body, best_lines)
+    if confidence > ceiling:
+        confidence = ceiling
+        caveats.append(
+            about(
+                "Some of the measurements used were estimated from size labels, so confidence is "
+                "capped as it is for an answer drawn from purchase history alone.",
+                "body",
+            )
+        )
+
+    # An answer is held to its own explanation. A size named while the explanation calls it too
+    # tight or too loose somewhere used to come with the confidence of one that fits: for a
+    # 120 cm chest the answer was a 42 at 0.80, a shirt with no ease left there. It is still
+    # named, as the closest there is, but no surer than a cold start, and the person is told at
+    # every level, without the zone, which only the explanation names, unless they keep the body
+    # to themselves.
+    misfits = [] if (all_returned or nothing_fits) else _clearly_wrong(best_lines, tolerated)
+    if misfits:
+        confidence = min(confidence, COLD_START_CEILING)
+        caveats.append(
+            about(
+                "The recommended size is clearly too tight or too loose somewhere: it is the "
+                "closest size, not one that fits.",
+                "body",
+            )
+        )
 
     if fallback_zones:
         caveats.append(
@@ -430,27 +1169,99 @@ def recommend(profile: dict, garment: dict, disclosure_level: str = "explained")
             + ", ".join(unused_keys)
             + "."
         )
-    if any(line.assessment == "unknown" for line in best_lines):
-        caveats.append("Some zones could not be evaluated because the profile has no matching measurement.")
+    if not crit:
+        caveats.append(
+            "This implementation has no critical zones for this category, so nothing in the "
+            "answer was weighted as harder to alter than the rest."
+        )
+    if unreachable_critical:
+        caveats.append(
+            "These zones count as critical here, but this implementation has no mapping for "
+            "them and did not evaluate them: " + ", ".join(unreachable_critical) + "."
+        )
+    if unused_ease_zones:
+        caveats.append(
+            "The garment declares an intended ease for zones this implementation does not use: "
+            + ", ".join(unused_ease_zones)
+            + "."
+        )
+    # Which side is missing decides what the caveat says, as in the cold start. A critical zone
+    # the garment does not publish is named at every level, since the garment is the shop's own;
+    # one the profile lacks is named only where an explanation is sent, since naming it here
+    # would tell the verifier what the profile lacks. A shirt without its shoulders used to be
+    # put down to the profile, which had them.
+    unpublished = sorted(line.zone for line in best_lines if line.note == UNPUBLISHED)
+    if unpublished:
+        caveats.append(
+            "The garment does not publish a measurement for these critical zones, so they were "
+            "not evaluated: " + ", ".join(unpublished) + "."
+        )
+    if any(line.note == UNMEASURED for line in best_lines):
+        caveats.append(
+            about(
+                "Some zones could not be evaluated because the profile has no matching "
+                "measurement.",
+                "body",
+            )
+        )
     if confidence < 0.4:
         caveats.append("Low confidence: treat this as a starting point, not an answer.")
 
     if rejected and not all_returned:
         caveats.append(
-            "Sizes already returned for this exact garment were removed from the "
-            "candidates: " + ", ".join(sorted(lbl for _, lbl, _ in rejected)) + "."
+            about(
+                "Sizes already returned for this exact garment were removed from the "
+                "candidates: " + ", ".join(sorted(lbl for _, lbl, _ in rejected)) + ".",
+                "history",
+            )
         )
     if all_returned:
         # Every size on offer has already come back. Naming one anyway would be
         # worse than naming none, and the person is owed the reason rather than
         # a silent shrug.
         caveats.append(
-            "Every size of this garment has already been returned by this person. "
-            "No size is named, deliberately."
+            about(
+                "Every size of this garment has already been returned by this person. "
+                "No size is named, deliberately.",
+                "history",
+            )
         )
-    recommended = None if all_returned else (best_label if confidence >= 0.25 else None)
-    if recommended is None:
-        caveats.append("Not enough signal to name a size. Returning alternatives only, deliberately.")
+    if nothing_fits:
+        # The same, for sizes too tight where they cannot be let out or outside a constraint the
+        # person declared, and the reason goes out at every level: without it a result_only
+        # answer reads as not knowing, when what is known is that nothing here fits. It names no
+        # zone and no preference, and it is held back when it speaks about a layer the person
+        # keeps to themselves: the sizes are judged against the body, a constraint is a
+        # preference, and "every other size" says that some came back.
+        if not by_constraint:
+            reason = "too tight where it cannot be let out"
+        elif len(by_constraint) == len(unfit):
+            reason = "outside a limit the person has set"
+        else:
+            reason = (
+                "either too tight where it cannot be let out or outside a limit the person "
+                "has set"
+            )
+        caveats.append(
+            about(
+                ("Every other size" if rejected else "Every size")
+                + " of this garment is "
+                + reason
+                + ". No size is named, deliberately.",
+                "body",
+                *(["preferences"] if by_constraint else []),
+                *(["history"] if rejected else []),
+            )
+        )
+    if all_returned or nothing_fits:
+        # The reason has just been given, and "not enough signal" would be false next to it.
+        recommended = None
+    else:
+        recommended = best_label if confidence >= 0.25 else None
+        if recommended is None:
+            caveats.append(
+                "Not enough signal to name a size. Returning alternatives only, deliberately."
+            )
 
     return MatchReport(
         cut_profile_id=garment.get("cut_profile_id", ""),
@@ -458,55 +1269,173 @@ def recommend(profile: dict, garment: dict, disclosure_level: str = "explained")
         confidence=confidence,
         disclosure_level=disclosure_level,
         alternatives=[
-            {"size_label": lbl, "score": round(sc, 2)} for sc, lbl, _ in scored[1:4]
+            {"size_label": lbl, "score": round(sc, 2)}
+            for sc, lbl, _ in ([] if nothing_fits else scored[1:4])
         ]
         + [
             {
                 "size_label": lbl,
                 "score": round(sc, 2),
-                "note": "Already returned for this garment.",
+                "note": about("Already returned for this garment.", "history"),
             }
             for sc, lbl, _ in (rejected if not all_returned else [])
+        ]
+        + [
+            {
+                "size_label": t[1],
+                "score": round(t[0], 2),
+                "note": (
+                    about("Outside a limit the person has set.", "body", "preferences")
+                    if any(t is u for u in by_constraint)
+                    else about("Too tight where it cannot be let out.", "body")
+                ),
+            }
+            for t in unfit
         ],
         explanation=best_lines,
-        based_on=based_on,
+        based_on=_based_on(
+            profile,
+            compared=compared,
+            preferences=len(deciding),
+            history=history_n,
+            same_brand=brand_history_n,
+            offset_applied=offset_applied,
+        ),
         caveats=caveats,
         improve_by=_improvements(body, profile, garment),
         computed_at=computed_at,
+        withheld_zones=withheld_zones,
+        unknown_measurements=unknown_measurements,
+        withheld_sentences=held_back,
+        withheld_bands=bool(never.intersection(("preferences", "history"))),
     )
 
 
+def _never_shared(profile: dict) -> set[str]:
+    """What the person listed in never_share: measurement keys, or whole layers."""
+    return set((profile.get("disclosure_defaults") or {}).get("never_share") or [])
+
+
+def _based_on(
+    profile: dict, *, compared: set[str], preferences: int, history: int, same_brand: int,
+    offset_applied: bool
+) -> dict:
+    """What an answer rests on, in counts: what it used, not what the profile holds.
+
+    The counts used to be of the whole profile: seven measurements and four preferences for a
+    shirt compared on five and decided by two, as if the inseam, or a preference about trousers,
+    had a part in it. At every level, that told the verifier how full the profile is, and not what
+    the answer rests on. A measurement the person listed in never_share is not counted, and a
+    layer listed whole leaves its counts out: a zero would say that nothing of the kind was used.
+    """
+    never = _never_shared(profile)
+    based_on: dict = {}
+    if "body" not in never:
+        based_on["body_signals"] = len(compared - never)
+    if "preferences" not in never:
+        based_on["preference_signals"] = preferences
+    if "history" not in never:
+        based_on["history_signals"] = history
+        based_on["brand_specific_history_signals"] = same_brand
+        based_on["learned_offset_applied"] = offset_applied
+    return based_on
+
+
+def _unknown_measurements(profile: dict, body: dict) -> list[str]:
+    """The body measurements this implementation cannot read, by the names they were given.
+
+    Such a measurement is left out of the answer, which used to say only that some zone had no
+    matching measurement, while improve_by asked for the very measurement the person had just
+    written as "chest". Keys prefixed x_ are extensions the schema allows, so not knowing them is
+    expected and they are not named. Nor is anything the person listed in never_share: a name
+    alone says that the measurement exists.
+    """
+    never = _never_shared(profile)
+    if "body" in never:
+        return []
+    known = {m.body_key for m in ZONE_MAPPINGS}
+    return sorted(
+        key for key in body if key not in known and not key.startswith("x_") and key not in never
+    )
+
+
+def _withheld_zones(profile: dict) -> list[str]:
+    """The zones whose explanation must never leave, because the person listed them.
+
+    never_share names measurement keys or whole layers. A zone is withheld when its body
+    measurement is named, or when the whole body layer is. The measurement still counts
+    towards the answer: the computation happens where the profile lives, and what the
+    list governs is what leaves it.
+    """
+    never = _never_shared(profile)
+    if not never:
+        return []
+    return sorted(m.zone for m in ZONE_MAPPINGS if "body" in never or m.body_key in never)
+
+
+def _label_estimate_ceiling(body: dict, lines: list[ExplanationLine]) -> float:
+    """How confident an answer may be, given which of its measurements are label estimates.
+
+    A size label from one brand says close to nothing about another's, which is why a cold
+    start is capped. A body measurement estimated from size labels is that same evidence
+    written down as a measurement, and letting it lift an answer past the cap would undo the
+    cap one step removed. Above the ceiling, confidence is earned only by the measurements
+    used that are not label estimates, critical zones weighing as much as they do when the
+    size is chosen. Measurements the garment does not use are not counted, either way.
+    """
+    body_keys = {m.zone: m.body_key for m in ZONE_MAPPINGS}
+    total = estimated = 0.0
+    for line in lines:
+        if line.assessment == "unknown":
+            continue
+        weight = CRITICAL_WEIGHT if line.critical else 1.0
+        total += weight
+        measurement = body.get(body_keys.get(line.zone, "")) or {}
+        if measurement.get("source") == "estimated_from_size_labels":
+            estimated += weight
+    if not total or not estimated:
+        return 1.0
+    measured_share = (total - estimated) / total
+    return round(COLD_START_CEILING + (1.0 - COLD_START_CEILING) * measured_share, 3)
+
+
 def _confidence(
-    *, body, lines, best, runner_up, history_n, brand_history_n, fallback_zones, n_sizes
+    *, body, lines, best, runner_up, history_evidence, fallback_zones, n_sizes,
+    unreachable_critical_n, now
 ) -> float:
     known = [l for l in lines if l.assessment != "unknown"]
     if not known:
         return 0.05
     coverage = len(known) / max(1, len(lines))
+    # A critical zone this implementation cannot reach counts against the score, not out of it.
+    # Leaving it out of the denominator made an answer that never looked at the bust of a dress
+    # score exactly like one where the bust had been measured and fitted.
     critical_known = [l for l in known if l.critical]
-    critical_total = [l for l in lines if l.critical]
-    critical_coverage = (
-        len(critical_known) / len(critical_total) if critical_total else 1.0
-    )
+    critical_total = len([l for l in lines if l.critical]) + unreachable_critical_n
+    # An empty critical set is not full coverage of nothing. It means this implementation has no
+    # critical zones for the category and nothing was weighted as harder to alter than the rest,
+    # which is a gap in the answer and has to cost like one. DEFAULT_EASE already works this way:
+    # a missing ease band falls back and pays a penalty instead of passing unnoticed.
+    critical_coverage = len(critical_known) / critical_total if critical_total else 0.0
 
-    source_quality = 0.0
-    if body:
-        weights = {
-            "scan_3d": 1.0,
-            "tape_measured": 0.9,
-            "imported_from_retailer": 0.6,
-            "inferred_from_history": 0.5,
-            "self_reported": 0.45,
-            "estimated_from_size_labels": 0.25,
-        }
-        source_quality = sum(
-            weights.get(m.get("source", "self_reported"), 0.4) * float(m.get("confidence", 0.5))
-            for m in body.values()
-        ) / len(body)
+    # How good the measurements behind this answer are: only those this garment uses, critical
+    # zones weighing as much as they do when the size is chosen. An average over the whole profile
+    # let a measurement no shirt reads, or a handful of invented ones, move every answer. The
+    # history behind the answer is weighed the same way, zone by zone, so an old outcome says less
+    # about a girth, as an old measurement does, and as much as ever about a length.
+    body_keys = {m.zone: (m.body_key, m.linear) for m in ZONE_MAPPINGS}
+    weighted = history = total = 0.0
+    for line in known:
+        key, linear = body_keys[line.zone]
+        weight = CRITICAL_WEIGHT if line.critical else 1.0
+        weighted += weight * _measurement_quality(body[key], linear, now)
+        history += weight * min(1.0, history_evidence.get(line.zone, 0.0) / 6.0)
+        total += weight
+    source_quality = weighted / total
+    history_factor = history / total
 
     margin = best - runner_up if n_sizes > 1 else 0.15
     margin_factor = min(1.0, margin / 0.12)
-    history_factor = min(1.0, (history_n + brand_history_n) / 6.0)
     fallback_penalty = min(0.15, 0.03 * fallback_zones)
 
     raw = (
@@ -522,15 +1451,50 @@ def _confidence(
 
 
 def _improvements(body: dict, profile: dict, garment: dict) -> list[str]:
+    """What the person could add, or take again, to make the next answer better.
+
+    It asks only for the measurements this garment uses, critical zones first. It used to go
+    through the whole vocabulary in alphabetical order: a shirt asked Luca for his thigh and his
+    inseam, and asked a new profile for its arm, chest and hips, leaving out the neck and the
+    shoulders, the two zones a shirt cannot be let out at.
+
+    It leaves only from explained up, and even there it never names a measurement the person
+    listed in never_share, and none at all when the whole body layer is listed. "Re-measure with
+    a tape: hip_circumference" told the verifier that the profile holds the hips the person had
+    kept to themselves, and that they were taken from memory. Nor does it ask for a history the
+    person listed: offered only when the history is empty, the suggestion told the verifier, by
+    its absence, that there is one.
+    """
     out: list[str] = []
-    needed = {m.body_key for m in ZONE_MAPPINGS}
-    missing = [k for k in sorted(needed) if k not in body]
+    never = _never_shared(profile)
+
+    def nameable(key: str) -> bool:
+        return "body" not in never and key not in never
+
+    crit = critical_zones(garment.get("category", ""), garment)
+    published = {
+        key
+        for size in garment.get("sizes", [])
+        for key in (size.get("finished_measurements") or {})
+    }
+    used = sorted(
+        (m for m in ZONE_MAPPINGS if m.garment_key in published),
+        key=lambda m: (m.zone not in crit, m.body_key),
+    )
+    needed = [m.body_key for m in used]
+    missing = [k for k in needed if k not in body and nameable(k)]
     for key in missing[:3]:
         out.append(f"Add a measurement for {key.replace('_', ' ')}.")
-    weak = [k for k, v in body.items() if v.get("source") in ("self_reported", "estimated_from_size_labels")]
+    weak = [
+        k
+        for k in needed
+        if k in body
+        and body[k].get("source") in ("self_reported", "estimated_from_size_labels")
+        and nameable(k)
+    ]
     if weak:
-        out.append(f"Re-measure with a tape: {', '.join(sorted(weak)[:3])}.")
-    if not profile.get("history"):
+        out.append(f"Re-measure with a tape: {', '.join(weak[:3])}.")
+    if not profile.get("history") and "history" not in never:
         out.append("Record how past garments actually fitted — it is the strongest signal available.")
     return out
 
@@ -581,15 +1545,21 @@ def _labels_by_size(garment: dict) -> list[str]:
     return [label for _, label in placed]
 
 
-def _history_only_size(profile: dict, garment: dict) -> tuple[str | None, float, list[str]]:
+def _history_only_size(profile: dict, garment: dict) -> tuple[str | None, float, list[str], int]:
     """Guess a size from past outcomes alone, with no body measurements at all.
 
     Only same-brand history is trusted here: a size label from one brand says almost nothing about
-    another brand's label, and pretending otherwise is how size charts got their reputation.
+    another brand's label, and pretending otherwise is how size charts got their reputation. The
+    latest purchase counts most, found by its moment: ordered as text, a date written in another
+    time zone could pass for the latest when it was not. The number of purchases the size was
+    derived from comes back with it: they are what the answer rests on, and no others.
     """
     labels = _labels_by_size(garment)
+    # Where each label stands, as _label_key reads it: the first, if two read alike.
+    positions: dict[str | None, int] = {}
+    for index, label in enumerate(labels):
+        positions.setdefault(_label_key(label), index)
     brand = garment.get("brand")
-    category = garment.get("category")
     step = {
         "kept": 0,
         "returned_too_small": 1,
@@ -599,24 +1569,25 @@ def _history_only_size(profile: dict, garment: dict) -> tuple[str | None, float,
     }
 
     crossed_systems = False
-    candidates: list[tuple[str, str, float]] = []  # (occurred_at, label, weight)
-    for item in profile.get("history", []):
+    candidates: list[tuple[datetime, str, float]] = []  # (occurred_at, label, weight)
+    for item in _history(profile):
         ref = item.get("garment_ref", {})
-        if ref.get("brand") != brand or ref.get("category") != category:
+        if ref.get("brand") != brand or not _same_category(ref, garment):
             continue
         if not _same_size_system(ref, garment):
             crossed_systems = True
             continue
-        if ref.get("size_label") not in labels:
+        position = positions.get(_label_key(ref.get("size_label")))
+        if position is None:
             continue
         delta = step.get(item.get("outcome"))
         if delta is None:
             continue
-        idx = labels.index(ref["size_label"]) + delta
+        idx = position + delta
         if not 0 <= idx < len(labels):
             continue
         same_style = ref.get("style_id") == garment.get("style_id")
-        candidates.append((item.get("occurred_at", ""), labels[idx], 1.5 if same_style else 1.0))
+        candidates.append((_when(item.get("occurred_at")), labels[idx], 1.5 if same_style else 1.0))
 
     if not candidates:
         notes = ["No usable purchase history for this brand and category."]
@@ -625,7 +1596,7 @@ def _history_only_size(profile: dict, garment: dict) -> tuple[str | None, float,
                 "History for this brand exists but is labelled in a different size "
                 "system, so it was not used."
             )
-        return None, 0.0, notes
+        return None, 0.0, notes, 0
 
     candidates.sort(reverse=True)  # most recent first
     scores: dict[str, float] = {}
@@ -634,9 +1605,9 @@ def _history_only_size(profile: dict, garment: dict) -> tuple[str | None, float,
     best = max(scores, key=scores.get)
 
     # Deliberately capped. A size guessed from labels is a starting point, never a confident answer.
-    confidence = min(0.40, 0.18 + 0.07 * len(candidates))
+    confidence = min(COLD_START_CEILING, 0.18 + 0.07 * len(candidates))
     agreement = scores[best] / sum(scores.values())
     confidence *= 0.6 + 0.4 * agreement
     return best, round(confidence, 3), [
         f"Derived from {len(candidates)} past {brand} purchase(s) in this category, no measurements used."
-    ]
+    ], len(candidates)

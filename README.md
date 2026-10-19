@@ -4,6 +4,10 @@
 
 > **Status: v0.1 draft.** Nothing here is stable. Breaking changes are expected until v1.0.
 
+Specification, schemas and tools: **[agiofit.org](https://agiofit.org/)**. The schema `$id` URLs
+resolve there, and the [interactive guide](https://agiofit.org/guide/) walks through the model
+without reading a line of JSON.
+
 ## The problem
 
 Size recommendation already works — the market has proven that much. What every working
@@ -67,11 +71,19 @@ Three artefacts, that's all:
 
 ## Quickstart
 
+**Without Python.** The Cut Profile builder at [agiofit.org/builder](https://agiofit.org/builder/) writes and validates a document in the
+browser from tape measurements. Nothing is uploaded.
+
+**With Python.**
+
 ```bash
 cd reference
 pip install -e .
-python -m agiofit.cli ../examples/profile-mature.json ../examples/cut-shirt.json
+python -m agiofit.cli ../examples/profile-mature.json ../examples/cut-shirt.json explained
 ```
+
+The example profile asks for `result_only` unless told otherwise, so the command names
+`explained` to show the per-zone reasoning.
 
 Or from Python:
 

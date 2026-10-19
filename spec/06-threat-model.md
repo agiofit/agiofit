@@ -14,6 +14,11 @@ centimetres: pregnancy, rapid weight change, illness, treatment, an eating disor
 history layer this specification treats as its most valuable signal is also its most sensitive
 content, and both facts have to be designed for at once.
 
+The format keeps only the latest value of each measurement (`01-fit-profile.md`), so a series of
+earlier values exists only where someone keeps one: a vault, or anyone who has received the profile
+or its reports over time. The outcomes, correction events and `kept_despite` records of the history
+layer do travel with the profile, because matching needs them.
+
 A related legal note extends `04-privacy.md`: measurements captured by tape are ordinary personal
 data, but *inferences drawn from their trajectory* can land in special categories — health,
 pregnancy — regardless of how innocently each individual value was collected. Aggregation changes
@@ -28,13 +33,12 @@ arithmetic leak is closed (`04-privacy.md`), but subtraction is not the only att
   crafted Cut Profiles can bisect its way toward the underlying measurements. Each answer is one
   bit; enough answers are a tape measure. No serialisation rule prevents this — only the vault's
   right to refuse can.
-- *Metadata side channels, present today.* In the reference implementation, `result_only` output
-  includes `based_on` and `improve_by`. A non-zero `brand_specific_history_signals` tells the
-  verifier the person has bought this brand before. An `improve_by` entry naming `arm_length`
-  reveals which measurements exist and how good they are. Neither is a body measurement; both are
-  disclosures the level's name does not advertise. Coarsening or dropping these fields at
-  `result_only` is an open design decision that MUST be resolved before v0.2 freezes the
-  recommendation request shape.
+- *Metadata side channels.* `based_on` and `improve_by` describe the profile. A non-zero
+  `brand_specific_history_signals` tells the verifier the person has bought this brand before, an
+  `improve_by` entry naming `arm_length` reveals which measurements exist and how good they are,
+  and the same counts and suggestions reaching several verifiers let them recognise one person.
+  Neither field travels at `result_only` (`04-privacy.md`); from `explained` up both do, and a
+  person choosing that level is choosing to say this much.
 
 **The vault operator.** Whoever runs the vault sees everything, always. No disclosure level
 protects against the party doing the computing. This is open question 1 viewed from the security
@@ -81,7 +85,8 @@ the stolen copy more valuable, because it is now authenticated.
 
 1. The `fit_recommendation` request shape MUST allow the vault to refuse or limit queries without
    breaking conformance; the protocol must not assume unlimited answers.
-2. The contents of `based_on` and `improve_by` at `result_only` MUST be re-examined; history depth
-   and measurement inventory are disclosures in their own right.
+2. At `result_only` neither `based_on` nor `improve_by` travels (`04-privacy.md`). What they
+   disclose from `explained` up, history depth and measurement inventory, MUST be weighed again
+   when the request shape is designed.
 3. Reports MUST NOT be linkable across verifiers through their identifiers.
 4. A `full` disclosure request SHOULD carry its justification as data, not as documentation.

@@ -1,4 +1,7 @@
-"""Minimal CLI: agiofit <fit-profile.json> <cut-profile.json> [disclosure_level]"""
+"""Minimal CLI: agiofit <fit-profile.json> <cut-profile.json> [disclosure_level]
+
+With no level given, the profile's own default_level applies, and result_only if it has none.
+"""
 
 import json
 import sys
@@ -11,7 +14,7 @@ def main(argv: list[str] | None = None) -> int:
     if len(argv) < 2:
         print(__doc__.strip(), file=sys.stderr)
         return 2
-    level = argv[2] if len(argv) > 2 else "explained"
+    level = argv[2] if len(argv) > 2 else None
     profile = load_fit_profile(argv[0])
     garment = load_cut_profile(argv[1])
     report = recommend(profile, garment, disclosure_level=level)

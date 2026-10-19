@@ -27,10 +27,17 @@ Listed rather than hidden. Contributions on any of these are more useful than sc
 
 7. **Anti-abuse.** A portable profile is also a portable target. Inference of health conditions,
    pregnancy or weight change from measurement history is possible and needs thinking about before
-   scale, not after. A first threat model is in `06-threat-model.md`; what remains open is which
-   countermeasures belong in the data model at all.
+   scale, not after. A first threat model is in `06-threat-model.md`. One countermeasure is now in
+   the data model: a profile keeps only the latest value of each measurement (`01-fit-profile.md`).
+   What remains open is which others belong there.
 
 8. **Assessment words for length zones.** `snug` and `roomy` are girth words. For a sleeve or an
    inseam the honest words are *short* and *long*, and collapsing both onto one scale loses the
    direction of an error a tailor could actually fix. A per-dimension vocabulary is a candidate
    for v0.2, to be weighed against keeping the normative enum as small as possible.
+
+9. **An identifier for history entries.** Entries carry none, so the same event written twice
+   cannot be told from two that look alike, and a wrong entry can be corrected only where it is,
+   not by sending its replacement. An identifier would settle both, and would also be one more
+   handle for following a person across systems, if it were ever taken from an order number. A
+   candidate for v0.2, to be designed with that in mind.
