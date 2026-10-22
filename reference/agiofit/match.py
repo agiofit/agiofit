@@ -932,9 +932,11 @@ def recommend(
             if abs(history_offsets.get(mapping.zone, 0.0)) > 0.01:
                 offset_applied = True
 
-            g_cm = _cm(gm["value"], gm["unit"])
-            if flat and mapping.doubles_when_flat_laid:
-                g_cm *= 2
+            # A width taken flat is half a girth, and so is its tolerance: one factor turns both
+            # into girths, so the two cannot come apart. A tolerance follows its measurement the
+            # way it follows its unit.
+            to_girth = 2.0 if flat and mapping.doubles_when_flat_laid else 1.0
+            g_cm = _cm(gm["value"], gm["unit"]) * to_girth
             g_cm *= 1 + (stretch if not mapping.linear else 0.0)
             b_cm = _cm(bm["value"], bm["unit"])
             ease = g_cm - b_cm
@@ -960,8 +962,9 @@ def recommend(
             shift += history_offsets.get(mapping.zone, 0.0) * mapping.offset_scale
             lo, hi = lo + shift, hi + shift
 
-            # A garment's tolerance is in the unit of its measurement too.
+            # A garment's tolerance is in the unit of its measurement too, and on the same girth.
             garment_tol = _cm(gm["tolerance"], gm["unit"]) if "tolerance" in gm else prod_tol_cm
+            garment_tol *= to_girth
             meas_tol = garment_tol + _body_tolerance_cm(bm)
             slack = meas_tol
             assessment = _assess(ease, lo, hi, slack)

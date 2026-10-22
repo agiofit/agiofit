@@ -258,6 +258,35 @@ def test_a_tolerance_is_read_in_the_unit_of_its_measurement(mature, shirt):
     assert _answer(mature, garment) == _answer(mature, shirt)
 
 
+def test_a_flat_width_is_half_a_girth_and_so_is_its_tolerance(mature, shirt):
+    """Plus or minus 1 cm across a flat chest is plus or minus 2 cm round it. The width was doubled
+    and its tolerance was not, so a garment measured flat looked twice as precise at its girths as
+    the same garment measured round: a 41 whose chest sat 1.5 cm past the brand's band was called
+    too loose, and named only as the closest size, though the shirt itself varies by 2 cm there.
+    The collar is laid flat too, but measured whole, and keeps its tolerance."""
+    import copy
+
+    person = copy.deepcopy(mature)
+    # Taken as exact, so that only the garment's tolerance is left to judge by.
+    for key in ("chest_circumference", "neck_circumference"):
+        person["body"]["measurements"][key]["tolerance"] = 0
+
+    # The 41 alone: 16 cm of ease at the chest, under the shirt's 1 cm production tolerance, and
+    # 2 cm at the collar, under its own 0.5 cm.
+    garment = copy.deepcopy(shirt)
+    garment["sizes"] = [size for size in garment["sizes"] if size["size_label"] == "41"]
+
+    def judged(zone, low, high):
+        cut = copy.deepcopy(garment)
+        cut["intended_ease"][zone] = {"min": low, "max": high, "unit": "cm"}
+        report = recommend(person, cut, disclosure_level="explained")
+        return next(line.assessment for line in report.explanation if line.zone == zone)
+
+    assert judged("chest", 12, 14.5) == "roomy"  # 1.5 cm past: inside the 2 cm round the chest
+    assert judged("chest", 12, 13.5) == "too_loose"  # 2.5 cm past: outside it
+    assert judged("neck", 0.5, 1.25) == "too_loose"  # 0.75 cm past a whole 0.5 cm
+
+
 def test_a_tolerance_left_out_is_not_the_strictest_one(mature, shirt):
     """A waist written from memory with no tolerance used to count as precise to half a
     centimetre, stricter than a waist taken with a tape and declared within 1.5. On a 41 that
@@ -953,14 +982,32 @@ def _slim(shirt):
     return slim
 
 
+def _full_at_the_waist(shirt):
+    """A cut where the 40 and the 41 each get one thing wrong: the 40 is snug at the shoulders,
+    and the 41, cut fuller at the waist than the closer waist the brand intends, is loose there.
+    With the example's own grading the two sizes are one step apart at the waist and the answer
+    turned on a few thousandths; the fuller 41 makes it turn on the flaw kept before."""
+    import copy
+
+    full = copy.deepcopy(shirt)
+    full["cut_profile_id"] = "sartoria-esempio:POPLIN-EASY:2026"
+    full["style_id"] = "POPLIN-EASY"
+    full["style_name"] = "Easy Poplin Shirt"
+    full["intended_ease"]["waist"] = {"min": 12, "max": 16, "unit": "cm"}
+    for size in full["sizes"]:
+        if size["size_label"] == "41":
+            size["finished_measurements"]["waist_width"]["value"] = 58
+    return full
+
+
 def test_a_flaw_kept_before_counts_for_less_than_one_returned_before(mature, shirt):
     """The mature profile kept the 41 despite a roomy waist, and sent back two 40s for tight
-    shoulders. On a slimmer cut the 40 has snug shoulders and the 41 a loose waist. The kept
+    shoulders. On a cut where the 40 has snug shoulders and the 41 a loose waist, the kept
     compromise used to count for nothing, and the answer was the 40: the tight shoulders again."""
     import copy
 
-    slim = _slim(shirt)
-    report = recommend(mature, slim, disclosure_level="explained")
+    cut = _full_at_the_waist(shirt)
+    report = recommend(mature, cut, disclosure_level="explained")
     assert report.recommended_size == "41"
     # The judgement is not softened: the waist is still reported as it is.
     waist = next(line for line in report.explanation if line.zone == "waist")
@@ -969,7 +1016,7 @@ def test_a_flaw_kept_before_counts_for_less_than_one_returned_before(mature, shi
     without = copy.deepcopy(mature)
     for item in without["history"]:
         item.pop("kept_despite", None)
-    assert recommend(without, slim).recommended_size == "40"
+    assert recommend(without, cut).recommended_size == "40"
 
 
 def test_a_kept_flaw_teaches_only_the_direction_it_was_kept_in(mature, shirt):
@@ -977,20 +1024,20 @@ def test_a_kept_flaw_teaches_only_the_direction_it_was_kept_in(mature, shirt):
     entry there is nothing to learn, and a flaw the other way is not what was tolerated."""
     import copy
 
-    slim = _slim(shirt)
+    cut = _full_at_the_waist(shirt)
 
     no_verdict = copy.deepcopy(mature)
     for item in no_verdict["history"]:
         kept = item.get("kept_despite") or []
         item["zone_feedback"] = [f for f in item.get("zone_feedback", []) if f["zone"] not in kept]
-    assert recommend(no_verdict, slim).recommended_size == "40"
+    assert recommend(no_verdict, cut).recommended_size == "40"
 
     other_way = copy.deepcopy(mature)
     for item in other_way["history"]:
         for verdict in item.get("zone_feedback", []):
             if verdict["zone"] in (item.get("kept_despite") or []):
                 verdict["verdict"] = "snug"
-    assert recommend(other_way, slim).recommended_size == "40"
+    assert recommend(other_way, cut).recommended_size == "40"
 
 
 def _with_preferences(profile, *preferences):

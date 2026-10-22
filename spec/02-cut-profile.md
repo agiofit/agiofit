@@ -33,6 +33,10 @@ extension is usable for fit; the rest is how a garment gets ruined.
 **`production_tolerance`.** Two garments of the same size are not the same object. A specification
 that ignores this produces answers more precise than the physical world supports.
 
+A tolerance, this one or the `tolerance` of a single measurement, is in the same terms as the
+number it qualifies: in its unit, and on what the tape measured. A width taken flat is half a
+girth, so plus or minus 1 cm across a flat chest is plus or minus 2 cm round it.
+
 **`critical_zones`.** Where a mismatch cannot be tolerated or altered. Overrides category defaults.
 
 ## Identifying fields

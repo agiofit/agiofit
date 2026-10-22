@@ -53,10 +53,11 @@ loosely, which is the honest outcome. Critical zones carry triple weight, and be
 critical zone is penalised more heavily than being too loose, because a shoulder seam cannot be let
 out.
 
-Every tolerance is read in the unit of its own measurement. A body measurement that declares none
-is not taken as exact: the reference assumes the wide end of what its kind of measurement usually
-carries, 1.5 cm for a tape or a scan and 3 cm for anything else, so that leaving the field out
-never makes a measurement look more precise than the usual one of its kind.
+Every tolerance is read in the unit of its own measurement, and on the same girth: the tolerance
+of a flat-laid width is doubled with the width. A body measurement that declares none is not taken
+as exact: the reference assumes the wide end of what its kind of measurement usually carries,
+1.5 cm for a tape or a scan and 3 cm for anything else, so that leaving the field out never makes a
+measurement look more precise than the usual one of its kind.
 
 Eight details worth stealing:
 
