@@ -140,9 +140,11 @@ perpendicular to the leg fold.
 
 **`cuff_width`.** Across the cuff opening, fastened on the button normally used.
 
-**`neck_circumference`.** Collar fastened and laid flat, measured along the collar from the
-centre of the button to the centre of the buttonhole. This is the whole circumference, not half
-of it, despite the garment being flat.
+**`neck_circumference`.** Unlike the rest of the garment, the collar is measured unfastened.
+Open it out flat and measure along the middle of the collar band, the stand sewn to the neckline
+and not the fold-over collar, from the centre of the button to the centre of the buttonhole, or
+between the centres of the two halves of a snap. This is the whole circumference, not half of
+it, despite the garment being flat.
 
 **`shoulder_width`.** From shoulder seam to shoulder seam across the back. This is a straight
 line and not half of anything, so it is the one exception to what `_width` means here; the name
