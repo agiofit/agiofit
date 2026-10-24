@@ -7,6 +7,7 @@
     "measurements": {
       "chest_circumference": { "value": 100, "unit": "cm", "source": "tape_measured", "confidence": 0.9, "observed_at": "2026-03-14T18:00:00Z", "tolerance": 1.0, "method": "iso_8559-1:bust_chest_girth" },
       "waist_circumference": { "value": 88, "unit": "cm", "source": "tape_measured", "confidence": 0.85, "observed_at": "2026-03-14T18:00:00Z", "tolerance": 1.5 },
+      "trouser_waist_circumference": { "value": 92, "unit": "cm", "source": "tape_measured", "confidence": 0.85, "observed_at": "2026-03-14T18:00:00Z", "tolerance": 1.5 },
       "hip_circumference": { "value": 99, "unit": "cm", "source": "tape_measured", "confidence": 0.85, "observed_at": "2026-07-30T09:00:00Z", "tolerance": 1.5 },
       "shoulder_width": { "value": 46, "unit": "cm", "source": "tape_measured", "confidence": 0.8, "observed_at": "2026-03-14T18:00:00Z", "tolerance": 1.0 },
       "neck_circumference": { "value": 40, "unit": "cm", "source": "tape_measured", "confidence": 0.9, "observed_at": "2026-03-14T18:00:00Z", "tolerance": 0.5 },

@@ -16,8 +16,10 @@ from pathlib import Path
 from .mapping import (
     ZONE_MAPPINGS,
     MAPPED_ZONES,
+    KNOWN_BODY_KEYS,
     PREFERENCE_SHIFT,
     STRETCH_CLASS_FRACTION,
+    body_key,
     critical_zones,
     default_ease,
 )
@@ -173,16 +175,16 @@ def _version_notes(profile: dict, garment: dict) -> list[str]:
 def _check_dates(profile: dict) -> None:
     """Refuse a profile with a date the calculation reads and this code cannot.
 
-    Read are the dates of the measurements this implementation knows, of every outcome and of
-    every preference that gives one. A missing one the schema requires cannot be read either.
-    A date nothing here reads, such as the profile's own updated_at, is a validator's to check.
+    Read are the dates of the measurements this implementation knows, for any category, of every
+    outcome and of every preference that gives one. A missing one the schema requires cannot be
+    read either. A date nothing here reads, such as the profile's own updated_at, is a
+    validator's to check.
     """
-    known = {mapping.body_key for mapping in ZONE_MAPPINGS}
     measurements = ((profile.get("body") or {}).get("measurements")) or {}
     unreadable = [
         f"body.measurements.{key}.observed_at ({measurement.get('observed_at')!r})"
         for key, measurement in sorted(measurements.items())
-        if key in known and _moment(measurement.get("observed_at")) is None
+        if key in KNOWN_BODY_KEYS and _moment(measurement.get("observed_at")) is None
     ]
     unreadable += [
         f"history[{index}].occurred_at ({item.get('occurred_at')!r})"
@@ -825,7 +827,7 @@ def recommend(
     if now.tzinfo is None:
         now = now.replace(tzinfo=timezone.utc)
     disclosure_level = _disclosure_level(profile, disclosure_level)
-    withheld_zones = _withheld_zones(profile)
+    withheld_zones = _withheld_zones(profile, garment.get("category", ""))
     # What the report says about a layer the person listed whole in never_share stays on the
     # report, for the person, and to_json keeps it from the verifier. With the history listed,
     # "Sizes already returned for this exact garment were removed from the candidates: 41."
@@ -897,7 +899,8 @@ def recommend(
 
         for mapping in ZONE_MAPPINGS:
             gm = finished.get(mapping.garment_key)
-            bm = body.get(mapping.body_key)
+            key = body_key(category, mapping.zone)
+            bm = body.get(key)
             is_critical = mapping.zone in crit
             if gm is None:
                 if is_critical:
@@ -925,7 +928,7 @@ def recommend(
                 )
                 continue
 
-            compared.add(mapping.body_key)
+            compared.add(key)
             preference = _deciding_preference(profile, category, mapping.zone)
             if preference is not None and all(preference is not p for p in deciding):
                 deciding.append(preference)
@@ -1108,10 +1111,11 @@ def recommend(
         fallback_zones=fallback_zones,
         n_sizes=len(scored),
         unreachable_critical_n=len(unreachable_critical),
+        category=category,
         now=now,
     )
 
-    ceiling = _label_estimate_ceiling(body, best_lines)
+    ceiling = _label_estimate_ceiling(body, best_lines, category)
     if confidence > ceiling:
         confidence = ceiling
         caveats.append(
@@ -1356,27 +1360,31 @@ def _unknown_measurements(profile: dict, body: dict) -> list[str]:
     never = _never_shared(profile)
     if "body" in never:
         return []
-    known = {m.body_key for m in ZONE_MAPPINGS}
     return sorted(
-        key for key in body if key not in known and not key.startswith("x_") and key not in never
+        key
+        for key in body
+        if key not in KNOWN_BODY_KEYS and not key.startswith("x_") and key not in never
     )
 
 
-def _withheld_zones(profile: dict) -> list[str]:
+def _withheld_zones(profile: dict, category: str) -> list[str]:
     """The zones whose explanation must never leave, because the person listed them.
 
-    never_share names measurement keys or whole layers. A zone is withheld when its body
-    measurement is named, or when the whole body layer is. The measurement still counts
-    towards the answer: the computation happens where the profile lives, and what the
-    list governs is what leaves it.
+    never_share names measurement keys or whole layers. A zone is withheld when the body
+    measurement it is compared against for this category is named, or when the whole body
+    layer is: a trouser waist kept private takes the waist out of a pair of jeans, and leaves
+    the waist of a shirt where it is. The measurement still counts towards the answer: the
+    computation happens where the profile lives, and what the list governs is what leaves it.
     """
     never = _never_shared(profile)
     if not never:
         return []
-    return sorted(m.zone for m in ZONE_MAPPINGS if "body" in never or m.body_key in never)
+    return sorted(
+        m.zone for m in ZONE_MAPPINGS if "body" in never or body_key(category, m.zone) in never
+    )
 
 
-def _label_estimate_ceiling(body: dict, lines: list[ExplanationLine]) -> float:
+def _label_estimate_ceiling(body: dict, lines: list[ExplanationLine], category: str) -> float:
     """How confident an answer may be, given which of its measurements are label estimates.
 
     A size label from one brand says close to nothing about another's, which is why a cold
@@ -1386,14 +1394,13 @@ def _label_estimate_ceiling(body: dict, lines: list[ExplanationLine]) -> float:
     used that are not label estimates, critical zones weighing as much as they do when the
     size is chosen. Measurements the garment does not use are not counted, either way.
     """
-    body_keys = {m.zone: m.body_key for m in ZONE_MAPPINGS}
     total = estimated = 0.0
     for line in lines:
         if line.assessment == "unknown":
             continue
         weight = CRITICAL_WEIGHT if line.critical else 1.0
         total += weight
-        measurement = body.get(body_keys.get(line.zone, "")) or {}
+        measurement = body.get(body_key(category, line.zone)) or {}
         if measurement.get("source") == "estimated_from_size_labels":
             estimated += weight
     if not total or not estimated:
@@ -1404,7 +1411,7 @@ def _label_estimate_ceiling(body: dict, lines: list[ExplanationLine]) -> float:
 
 def _confidence(
     *, body, lines, best, runner_up, history_evidence, fallback_zones, n_sizes,
-    unreachable_critical_n, now
+    unreachable_critical_n, category, now
 ) -> float:
     known = [l for l in lines if l.assessment != "unknown"]
     if not known:
@@ -1426,12 +1433,12 @@ def _confidence(
     # let a measurement no shirt reads, or a handful of invented ones, move every answer. The
     # history behind the answer is weighed the same way, zone by zone, so an old outcome says less
     # about a girth, as an old measurement does, and as much as ever about a length.
-    body_keys = {m.zone: (m.body_key, m.linear) for m in ZONE_MAPPINGS}
+    linear_zones = {m.zone: m.linear for m in ZONE_MAPPINGS}
     weighted = history = total = 0.0
     for line in known:
-        key, linear = body_keys[line.zone]
+        measurement = body[body_key(category, line.zone)]
         weight = CRITICAL_WEIGHT if line.critical else 1.0
-        weighted += weight * _measurement_quality(body[key], linear, now)
+        weighted += weight * _measurement_quality(measurement, linear_zones[line.zone], now)
         history += weight * min(1.0, history_evidence.get(line.zone, 0.0) / 6.0)
         total += weight
     source_quality = weighted / total
@@ -1474,7 +1481,8 @@ def _improvements(body: dict, profile: dict, garment: dict) -> list[str]:
     def nameable(key: str) -> bool:
         return "body" not in never and key not in never
 
-    crit = critical_zones(garment.get("category", ""), garment)
+    category = garment.get("category", "")
+    crit = critical_zones(category, garment)
     published = {
         key
         for size in garment.get("sizes", [])
@@ -1482,9 +1490,9 @@ def _improvements(body: dict, profile: dict, garment: dict) -> list[str]:
     }
     used = sorted(
         (m for m in ZONE_MAPPINGS if m.garment_key in published),
-        key=lambda m: (m.zone not in crit, m.body_key),
+        key=lambda m: (m.zone not in crit, body_key(category, m.zone)),
     )
-    needed = [m.body_key for m in used]
+    needed = [body_key(category, m.zone) for m in used]
     missing = [k for k in needed if k not in body and nameable(k)]
     for key in missing[:3]:
         out.append(f"Add a measurement for {key.replace('_', ' ')}.")

@@ -1957,3 +1957,162 @@ def test_a_suggestion_asks_only_for_what_the_garment_uses(mature, cold, shirt):
         "Add a measurement for shoulder width.",
         "Add a measurement for arm length.",
     ]
+
+
+# --------------------------------------------------------------------- the waist of trousers
+
+
+def _jeans():
+    """Two sizes of a jean laid flat, apart only at the waist: the hips are the same in both, so
+    the waist alone decides between them."""
+    return {
+        "schema_version": "0.1.0",
+        "cut_profile_id": "test-jeans-waist",
+        "category": "jeans",
+        "size_system": "EU",
+        "measurement_method": "flat_laid",
+        "provenance": {"published_by": "brand"},
+        "sizes": [
+            {
+                "size_label": label,
+                "finished_measurements": {
+                    "waist_width": {"value": waist, "unit": "cm"},
+                    "hip_width": {"value": 55, "unit": "cm"},
+                },
+            }
+            for label, waist in (("46", 44.5), ("48", 47))
+        ],
+    }
+
+
+def _worn_low(mature):
+    """The mature profile with a natural waist of 88 cm and trousers worn at 94, keeping nothing
+    private, so that every zone can be read in the explanation."""
+    import copy
+
+    profile = copy.deepcopy(mature)
+    measurements = profile["body"]["measurements"]
+    measurements["waist_circumference"]["value"] = 88
+    measurements["trouser_waist_circumference"]["value"] = 94
+    profile["disclosure_defaults"]["never_share"] = []
+    return profile
+
+
+def test_a_waistband_is_compared_with_where_trousers_are_worn(mature, monkeypatch):
+    """The waist of a jean was judged against the natural waist, the one a shirt is cut for.
+    Laid flat at 44.5 cm, a waistband is 89 cm round: five short of where this person wears
+    trousers, and one more than the natural waist, so it came out as cut, and the jean that does
+    not close was the one recommended."""
+    profile = _worn_low(mature)
+    report = recommend(profile, _jeans())
+    assert report.recommended_size == "48"
+    waist = next(line for line in report.explanation if line.zone == "waist")
+    assert waist.ease_cm == 0.0, "47 laid flat is 94 round, against 94"
+
+    # The counterproof: compared with the natural waist, as before, the smaller one wins.
+    monkeypatch.setattr("agiofit.mapping.BODY_KEY_BY_CATEGORY", {})
+    assert recommend(profile, _jeans()).recommended_size == "46"
+
+
+def test_without_a_trouser_waist_a_waistband_is_not_judged(mature):
+    """Falling back on the natural waist would bring back, without a word, the error the
+    trouser waist corrects. Without one, the waist of a jean is left unjudged, as a zone without
+    its measurement always is; it is critical, so it still counts against the answer, and the
+    person is asked for it."""
+    import copy
+
+    profile = _worn_low(mature)
+    without = copy.deepcopy(profile)
+    del without["body"]["measurements"]["trouser_waist_circumference"]
+
+    report = recommend(without, _jeans())
+    waist = next(line for line in report.explanation if line.zone == "waist")
+    assert waist.assessment == "unknown" and waist.critical and waist.ease_cm is None
+    assert report.confidence < recommend(profile, _jeans()).confidence
+
+    # Not judged on the natural waist in any way: moving it changes nothing at all.
+    elsewhere = copy.deepcopy(without)
+    elsewhere["body"]["measurements"]["waist_circumference"]["value"] = 120
+    for level in ("result_only", "explained", "scoped", "full"):
+        assert (
+            recommend(elsewhere, _jeans(), disclosure_level=level).to_json()
+            == recommend(without, _jeans(), disclosure_level=level).to_json()
+        ), level
+
+    out = recommend(without, _jeans(), disclosure_level="explained").to_json()
+    assert "Add a measurement for trouser waist circumference." in out["improve_by"]
+
+
+def test_a_trouser_waist_kept_private_leaves_the_jeans_and_not_the_shirt(mature, shirt):
+    """A zone goes with the measurement it is compared against. Kept private, the trouser waist
+    takes the waist out of every explanation of a jean, and is never named or counted; the
+    waist of a shirt, judged on the natural waist, stays where it is. The measurement still
+    counts towards the answer."""
+    profile = _worn_low(mature)
+    profile["disclosure_defaults"]["never_share"] = ["trouser_waist_circumference"]
+
+    for level in ("explained", "scoped", "full"):
+        jeans = recommend(profile, _jeans(), disclosure_level=level).to_json()
+        assert {line["zone"] for line in jeans["explanation"]} == {"hip"}, level
+        assert jeans["based_on"]["body_signals"] == 1, level
+        shirts = recommend(profile, shirt, disclosure_level=level).to_json()
+        assert "waist" in {line["zone"] for line in shirts["explanation"]}, level
+
+    for level in ("result_only", "explained", "scoped", "full"):
+        said = json.dumps(recommend(profile, _jeans(), disclosure_level=level).to_json())
+        assert "trouser_waist" not in said and "trouser waist" not in said, level
+
+    assert recommend(profile, _jeans()).recommended_size == "48"
+
+
+def test_how_sure_an_answer_about_a_jean_is_rests_on_the_trouser_waist(mature):
+    """How far an answer can lean on its measurements, and how far label estimates cap it, are
+    judged on the measurements compared. For a jean that is the trouser waist: one estimated from
+    size labels makes the answer less sure, and a natural waist estimated from them changes
+    nothing, neither the confidence nor what the caveats say."""
+    import copy
+
+    profile = _worn_low(mature)
+    base = recommend(profile, _jeans(), disclosure_level="full").to_json()
+
+    natural = copy.deepcopy(profile)
+    natural["body"]["measurements"]["waist_circumference"]["source"] = "estimated_from_size_labels"
+    assert recommend(natural, _jeans(), disclosure_level="full").to_json() == base
+
+    worn = copy.deepcopy(profile)
+    worn["body"]["measurements"]["trouser_waist_circumference"]["source"] = (
+        "estimated_from_size_labels"
+    )
+    assert recommend(worn, _jeans()).confidence < base["confidence"]
+
+
+def test_the_trouser_waist_is_a_name_this_implementation_knows(mature, shirt):
+    """Only trousers and jeans read the trouser waist, but the name is known whatever the
+    garment: no answer lists it among the names this implementation does not know, and a date on
+    it that cannot be read stops the answer for a shirt, as one on the inseam, which no shirt
+    reads either, already did."""
+    import copy
+
+    for garment in (shirt, _jeans()):
+        out = recommend(mature, garment, disclosure_level="explained").to_json()
+        assert not any("does not know" in c for c in out["caveats"])
+
+    for key in ("trouser_waist_circumference", "inseam"):
+        profile = copy.deepcopy(mature)
+        profile["body"]["measurements"][key]["observed_at"] = "14/03/2026"
+        with pytest.raises(UnreadableDate, match=key + r"\.observed_at"):
+            recommend(profile, shirt)
+
+
+def test_the_trouser_waist_changes_nothing_for_a_shirt(mature, shirt):
+    """A shirt is judged on the natural waist, as it always was: the example profile gives the
+    same report at every level with its trouser waist and without it."""
+    import copy
+
+    without = copy.deepcopy(mature)
+    del without["body"]["measurements"]["trouser_waist_circumference"]
+    for level in ("result_only", "explained", "scoped", "full"):
+        assert (
+            recommend(mature, shirt, disclosure_level=level).to_json()
+            == recommend(without, shirt, disclosure_level=level).to_json()
+        ), level

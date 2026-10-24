@@ -73,6 +73,9 @@ identifier may be a URL.
 A measurement under a name this implementation does not know is named from `explained` up, so
 the person can find it.
 
+The waistband of trousers or jeans is compared with where the person wears them, never with the
+natural waist: without `trouser_waist_circumference` it is left unjudged, and asked for.
+
 A preference moves each zone as far as a learned correction does: at the collar, where a
 centimetre is a whole size, a relaxed fit is about a size larger, not four.
 

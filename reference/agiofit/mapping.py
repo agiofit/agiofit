@@ -12,7 +12,7 @@ from dataclasses import dataclass
 class ZoneMapping:
     zone: str
     garment_key: str
-    body_key: str
+    body_key: str  # the usual one; body_key() below says which one a category reads
     doubles_when_flat_laid: bool
     linear: bool  # linear zones (shoulder, sleeve) tolerate far less ease than girths
     offset_scale: float  # how much of any shift applies here, learned or stated
@@ -39,6 +39,35 @@ ZONE_MAPPINGS: tuple[ZoneMapping, ...] = (
 # the specification, the ability to use it belongs to the implementation. Saying nothing about the
 # difference is the defect.
 MAPPED_ZONES: frozenset[str] = frozenset(m.zone for m in ZONE_MAPPINGS)
+
+# The zones whose body measurement depends on the garment, by category. The waistband of a pair of
+# trousers sits where the person wears their trousers, for most people below the natural waist a
+# shirt is cut for, and judging a waistband against the natural waist credited it with ease it
+# does not have where it is worn. Every zone not listed here reads the body_key of its row above.
+BODY_KEY_BY_CATEGORY: dict[tuple[str, str], str] = {
+    ("trousers", "waist"): "trouser_waist_circumference",
+    ("jeans", "waist"): "trouser_waist_circumference",
+}
+
+_MAPPING_BY_ZONE: dict[str, ZoneMapping] = {m.zone: m for m in ZONE_MAPPINGS}
+
+
+def body_key(category: str, zone: str) -> str:
+    """The body measurement a zone of a garment of this category is compared against.
+
+    The only way to the body side of a zone: there is no fallback from one measurement to the
+    other. A pair of trousers whose profile has no trouser waist leaves the waist unjudged, as any
+    missing measurement does; reading the natural waist instead would bring back the error the
+    table above corrects, without a word.
+    """
+    return BODY_KEY_BY_CATEGORY.get((category, zone), _MAPPING_BY_ZONE[zone].body_key)
+
+
+# Every body measurement name this implementation reads, for one category or another. Derived
+# from the two tables above, never written by hand, so a name added to either is known at once.
+KNOWN_BODY_KEYS: frozenset[str] = frozenset(m.body_key for m in ZONE_MAPPINGS) | frozenset(
+    BODY_KEY_BY_CATEGORY.values()
+)
 
 # Zones that cannot be altered or tolerated when wrong, per category.
 CRITICAL_ZONES: dict[str, tuple[str, ...]] = {
