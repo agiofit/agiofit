@@ -57,7 +57,10 @@ profile with no attack at all. This is the least technical adversary and the mos
 Mitigation is almost entirely outside a data model's reach — device security, wallet
 authentication — but the model can refuse to make it worse: nothing in the format should require
 keeping history that the person wants deleted, and per-source deletion via `import_ref` exists
-precisely so that removal is one action, not an audit.
+precisely so that removal is one action, not an audit. The builder on agiofit.org that helps a
+person write a profile keeps no draft for this reason: measurements left in a browser are read
+by whoever uses it next. It sends nothing, and the file it gives is the person's to keep where
+they choose.
 
 **The over-permissioned consumer.** `full` disclosure exists for tailors and exceptional cases,
 and every incentive pushes consumers to ask for it routinely — the same pressure that made "allow
