@@ -121,8 +121,9 @@ centre line.
 
 **`chest_width`.** Across, from armhole seam to armhole seam, about 2 cm below the armhole.
 
-**`waist_width`.** Across, at the narrowest point. Where the garment does not narrow, halfway
-between armhole and hem.
+**`waist_width`.** On a shirt or a top, across at the narrowest point; where the garment does
+not narrow, halfway between armhole and hem. On trousers and skirts, across the top of the
+waistband, fastened.
 
 **`hip_width`.** On trousers and skirts, across at 20 cm below the waistband. On upper garments,
 across at the hem.
@@ -151,8 +152,9 @@ line and not half of anything, so it is the one exception to what `_width` means
 is kept because the trade uses it. A raglan or kimono garment has no shoulder seams and should
 leave this out rather than estimate.
 
-**`sleeve_length`.** From the shoulder seam to the edge of the cuff, following the sleeve. On a
-raglan, from the base of the collar, which should be said in a note.
+**`sleeve_length`.** From the shoulder seam to the edge of the cuff, or of the hem on a sleeve
+without one, following the sleeve. On a raglan, from the base of the collar, which should be
+said in a note.
 
 **`inseam`.** Along the inner seam, from where the crotch seams meet to the bottom of the leg.
 
