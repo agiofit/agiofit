@@ -2116,3 +2116,152 @@ def test_the_trouser_waist_changes_nothing_for_a_shirt(mature, shirt):
             recommend(mature, shirt, disclosure_level=level).to_json()
             == recommend(without, shirt, disclosure_level=level).to_json()
         ), level
+
+
+# --------------------------------------------------------------------- what a garment leaves out
+
+STRETCH_ASSUMED = "does not say whether its fabric stretches"
+TOLERANCE_ASSUMED = "does not declare a production tolerance"
+
+
+def _assumed(out):
+    """Which of the two assumptions a serialised report says it made."""
+    return [
+        phrase
+        for phrase in (STRETCH_ASSUMED, TOLERANCE_ASSUMED)
+        if any(phrase in caveat for caveat in out["caveats"])
+    ]
+
+
+def test_a_garment_that_leaves_out_its_fabric_or_its_tolerance_is_told_and_counted(mature, shirt):
+    """Without its fabric, or without its production tolerance, the example shirt used to get the
+    answer and the confidence of the shirt that declares both, judged rigid and within 1 cm
+    without a word. The judgement is the same, since rigid and 1 cm are what the example
+    declares, but each assumption is said, at every level, and costs 0.03."""
+    import copy
+
+    base = recommend(mature, shirt)
+    no_fabric = copy.deepcopy(shirt)
+    del no_fabric["fabric"]
+    no_tolerance = copy.deepcopy(shirt)
+    del no_tolerance["production_tolerance"]
+    neither = copy.deepcopy(no_fabric)
+    del neither["production_tolerance"]
+
+    cases = (
+        (shirt, [], 0.0),
+        (no_fabric, [STRETCH_ASSUMED], 0.03),
+        (no_tolerance, [TOLERANCE_ASSUMED], 0.03),
+        (neither, [STRETCH_ASSUMED, TOLERANCE_ASSUMED], 0.06),
+    )
+    for garment, assumed, cost in cases:
+        report = recommend(mature, garment)
+        assert report.confidence == pytest.approx(base.confidence - cost), assumed
+        assert report.explanation == base.explanation, "the calculation is the one of before"
+        for level in ("result_only", "explained", "scoped", "full"):
+            out = recommend(mature, garment, disclosure_level=level).to_json()
+            assert _assumed(out) == assumed, (assumed, level)
+
+    # Without its ease bands, as the builder writes a shirt for its owner, the answer is at the
+    # cap of what category defaults cost already, and the two assumptions cost on top of it.
+    bandless = copy.deepcopy(shirt)
+    del bandless["intended_ease"]
+    bare = copy.deepcopy(bandless)
+    del bare["fabric"], bare["production_tolerance"]
+    expected = recommend(mature, bandless).confidence - 0.06
+    assert recommend(mature, bare).confidence == pytest.approx(expected)
+
+
+def test_a_fabric_declared_rigid_is_not_a_fabric_nobody_described(mature, shirt):
+    """What is undeclared is whether the fabric gives across: by class, or by a percentage
+    across. A shirt that says it does not stretch is a shirt about which that is known; one that
+    gives its composition, or how far it stretches lengthwise, has still not said it."""
+    import copy
+
+    base = recommend(mature, shirt).confidence
+    for fabric, assumed in (
+        ({"stretch_class": "none"}, []),
+        ({"stretch_pct": {"horizontal": 0}}, []),
+        ({"composition": "100% cotton"}, [STRETCH_ASSUMED]),
+        ({"stretch_pct": {"vertical": 4}}, [STRETCH_ASSUMED]),
+    ):
+        garment = copy.deepcopy(shirt)
+        garment["fabric"] = fabric
+        report = recommend(mature, garment)
+        assert _assumed(report.to_json()) == assumed, fabric
+        assert report.confidence == pytest.approx(base - 0.03 * len(assumed)), fabric
+
+
+def test_a_tolerance_given_measurement_by_measurement_is_a_declared_one(mature, shirt):
+    """A garment without a production tolerance assumes 1 cm only for the measurements it
+    compares without a tolerance of their own. With one on every measurement nothing is
+    assumed; a measurement that was not compared, because the profile has nothing to compare it
+    with, assumes nothing either."""
+    import copy
+
+    each = copy.deepcopy(shirt)
+    del each["production_tolerance"]
+    for size in each["sizes"]:
+        for measurement in size["finished_measurements"].values():
+            measurement.setdefault("tolerance", 1.0)
+    report = recommend(mature, each)
+    assert _assumed(report.to_json()) == []
+    assert report.confidence == recommend(mature, shirt).confidence
+
+    one_left = copy.deepcopy(each)
+    del one_left["sizes"][0]["finished_measurements"]["chest_width"]["tolerance"]
+    assert _assumed(recommend(mature, one_left).to_json()) == [TOLERANCE_ASSUMED]
+
+    # The sleeves without a tolerance, and a profile without the arm to compare them with.
+    sleeves = copy.deepcopy(each)
+    for size in sleeves["sizes"]:
+        del size["finished_measurements"]["sleeve_length"]["tolerance"]
+    armless = copy.deepcopy(mature)
+    del armless["body"]["measurements"]["arm_length"]
+    assert _assumed(recommend(armless, sleeves).to_json()) == []
+    assert _assumed(recommend(mature, sleeves).to_json()) == [TOLERANCE_ASSUMED]
+
+
+def test_what_a_garment_leaves_out_counts_only_where_it_was_assumed(mature, cold, shirt):
+    """A cold start compares nothing of the garment, so it assumes nothing about it: the same
+    report, word for word, for a shirt that declares neither its fabric nor its tolerance. The
+    fabric changes only a girth, so an answer that compared lengths alone assumed nothing about
+    it either, until a girth is compared."""
+    import copy
+
+    neither = copy.deepcopy(shirt)
+    del neither["fabric"], neither["production_tolerance"]
+    for level in ("result_only", "explained", "scoped", "full"):
+        assert (
+            recommend(cold, neither, disclosure_level=level).to_json()
+            == recommend(cold, shirt, disclosure_level=level).to_json()
+        ), level
+
+    no_fabric = copy.deepcopy(shirt)
+    del no_fabric["fabric"]
+    lengths = copy.deepcopy(mature)
+    measurements = lengths["body"]["measurements"]
+    lengths["body"]["measurements"] = {
+        key: measurements[key] for key in ("shoulder_width", "arm_length")
+    }
+    assert _assumed(recommend(lengths, no_fabric).to_json()) == []
+    lengths["body"]["measurements"]["chest_circumference"] = measurements["chest_circumference"]
+    assert _assumed(recommend(lengths, no_fabric).to_json()) == [STRETCH_ASSUMED]
+
+
+def test_an_assumption_is_said_where_a_cap_hides_what_it_costs(mature, shirt):
+    """Held to the cold start ceiling, an answer about a shirt it calls too tight at the chest
+    is at 0.40 whatever the garment declares, so the 0.06 of two assumptions does not show. The
+    two are said all the same, at every level."""
+    import copy
+
+    broad = copy.deepcopy(mature)
+    broad["body"]["measurements"]["chest_circumference"]["value"] = 120
+    neither = copy.deepcopy(shirt)
+    del neither["fabric"], neither["production_tolerance"]
+
+    assert recommend(broad, shirt).confidence == 0.40
+    assert recommend(broad, neither).confidence == 0.40
+    for level in ("result_only", "explained", "scoped", "full"):
+        out = recommend(broad, neither, disclosure_level=level).to_json()
+        assert _assumed(out) == [STRETCH_ASSUMED, TOLERANCE_ASSUMED], level

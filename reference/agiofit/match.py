@@ -520,6 +520,17 @@ def _usable_stretch(garment: dict) -> float:
     return STRETCH_CLASS_FRACTION.get(fabric.get("stretch_class", "none"), 0.0)
 
 
+def _declares_stretch(garment: dict) -> bool:
+    """Whether the garment says how far its fabric gives across, by class or by percentage.
+
+    One that says neither is judged as if it did not stretch, as _usable_stretch has it, and the
+    answer says so. One declared rigid is not one about which nothing is known.
+    """
+    fabric = garment.get("fabric") or {}
+    across = (fabric.get("stretch_pct") or {}).get("horizontal")
+    return "stretch_class" in fabric or across is not None
+
+
 def _label_key(label: object) -> str | None:
     """A size label as a person reads it, to line a past purchase up against a garment's sizes.
 
@@ -863,6 +874,14 @@ def recommend(
     improve_by: list[str] = []
     fallback_zones = 0
     reversed_ease_zones: set[str] = set()
+    # What the garment leaves unsaid and the comparison assumes instead: a fabric that does not
+    # stretch, a production tolerance of 1 cm. Counted only where the assumption was used, on a
+    # girth for the fabric and on a measurement without a tolerance of its own for the tolerance,
+    # so an answer that compared nothing assumed neither. Each used to pass without a word, and an
+    # answer about a garment that declares neither was as sure as one about a garment that does.
+    declares_stretch = _declares_stretch(garment)
+    declares_tolerance = bool(garment.get("production_tolerance"))
+    assumed_stretch = assumed_tolerance = False
 
     # A measurement this implementation has no mapping for is silently dropped
     # otherwise. Saying so is the difference between an answer that can be
@@ -941,6 +960,8 @@ def recommend(
             to_girth = 2.0 if flat and mapping.doubles_when_flat_laid else 1.0
             g_cm = _cm(gm["value"], gm["unit"]) * to_girth
             g_cm *= 1 + (stretch if not mapping.linear else 0.0)
+            if not mapping.linear and not declares_stretch:
+                assumed_stretch = True
             b_cm = _cm(bm["value"], bm["unit"])
             ease = g_cm - b_cm
 
@@ -968,6 +989,8 @@ def recommend(
             # A garment's tolerance is in the unit of its measurement too, and on the same girth.
             garment_tol = _cm(gm["tolerance"], gm["unit"]) if "tolerance" in gm else prod_tol_cm
             garment_tol *= to_girth
+            if "tolerance" not in gm and not declares_tolerance:
+                assumed_tolerance = True
             meas_tol = garment_tol + _body_tolerance_cm(bm)
             slack = meas_tol
             assessment = _assess(ease, lo, hi, slack)
@@ -1111,6 +1134,7 @@ def recommend(
         fallback_zones=fallback_zones,
         n_sizes=len(scored),
         unreachable_critical_n=len(unreachable_critical),
+        assumed_n=int(assumed_stretch) + int(assumed_tolerance),
         category=category,
         now=now,
     )
@@ -1147,6 +1171,14 @@ def recommend(
         caveats.append(
             "The garment does not publish an intended ease for every zone; category defaults were used."
         )
+    # About the garment, not the profile, so said at every level.
+    if assumed_stretch:
+        caveats.append(
+            "The garment does not say whether its fabric stretches, so it was judged as if it "
+            "did not."
+        )
+    if assumed_tolerance:
+        caveats.append("The garment does not declare a production tolerance, so 1 cm was assumed.")
     duplicate_labels = sorted(
         {
             size["size_label"]
@@ -1411,7 +1443,7 @@ def _label_estimate_ceiling(body: dict, lines: list[ExplanationLine], category: 
 
 def _confidence(
     *, body, lines, best, runner_up, history_evidence, fallback_zones, n_sizes,
-    unreachable_critical_n, category, now
+    unreachable_critical_n, assumed_n, category, now
 ) -> float:
     known = [l for l in lines if l.assessment != "unknown"]
     if not known:
@@ -1447,6 +1479,10 @@ def _confidence(
     margin = best - runner_up if n_sizes > 1 else 0.15
     margin_factor = min(1.0, margin / 0.12)
     fallback_penalty = min(0.15, 0.03 * fallback_zones)
+    # The fabric or the tolerance the garment does not declare, each assumed. A term of its own:
+    # a garment with no ease bands at all reaches the cap above already, and counted there these
+    # would cost nothing on exactly the garments that leave out the most.
+    assumed_penalty = 0.03 * assumed_n
 
     raw = (
         0.05
@@ -1456,6 +1492,7 @@ def _confidence(
         + 0.15 * margin_factor
         + 0.10 * history_factor
         - fallback_penalty
+        - assumed_penalty
     )
     return max(0.0, min(1.0, round(raw, 3)))
 

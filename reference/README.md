@@ -51,6 +51,10 @@ tolerance is doubled with the width. One left out counts as the wide end of what
 measurement usually carries, so leaving it out never makes a measurement look more precise than the
 usual one of its kind.
 
+A garment that does not say whether its fabric stretches is judged as rigid, and one with no
+production tolerance within 1 cm, as before; where either was assumed, the answer says so at
+every level and is less sure.
+
 Only the measurements a garment uses count towards how sure an answer is, critical zones triple.
 One declared less precise than usual for its source counts for less, and a girth loses precision
 as it ages, so the same profile is less sure years later.
