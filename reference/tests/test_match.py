@@ -2265,3 +2265,25 @@ def test_an_assumption_is_said_where_a_cap_hides_what_it_costs(mature, shirt):
     for level in ("result_only", "explained", "scoped", "full"):
         out = recommend(broad, neither, disclosure_level=level).to_json()
         assert _assumed(out) == [STRETCH_ASSUMED, TOLERANCE_ASSUMED], level
+
+
+def test_the_cli_writes_its_report_in_utf8_whatever_the_console(tmp_path, monkeypatch):
+    """On Windows, a report sent to a file with > was written in the console's code page,
+    cp1252, so an id or a size label with an accent made a JSON file that whoever opens it as
+    UTF-8 cannot read. The report is UTF-8 whatever the console."""
+    import io
+    import sys
+
+    from agiofit.cli import main
+
+    garment = json.loads((EXAMPLES / "cut-shirt.json").read_text(encoding="utf-8"))
+    garment["cut_profile_id"] = "maglificio-città:camicia:2026"
+    accented = tmp_path / "cut-shirt.json"
+    accented.write_text(json.dumps(garment, ensure_ascii=False), encoding="utf-8")
+    console = io.TextIOWrapper(io.BytesIO(), encoding="cp1252")
+    monkeypatch.setattr(sys, "stdout", console)
+
+    assert main([str(EXAMPLES / "profile-cold-start.json"), str(accented), "explained"]) == 0
+    console.flush()
+    report = json.loads(console.buffer.getvalue().decode("utf-8"))
+    assert report["cut_profile_id"] == "maglificio-città:camicia:2026"
