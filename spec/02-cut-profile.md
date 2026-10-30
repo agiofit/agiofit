@@ -155,8 +155,8 @@ arm: there the seam is not where the shoulder ends, and the number would describ
 than the fit.
 
 **`sleeve_length`.** From the shoulder seam to the edge of the cuff, or of the hem on a sleeve
-without one, following the sleeve. A raglan or kimono sleeve, or one set into a dropped shoulder,
-should leave this out. Measured from where it starts, it would be compared with an arm measured
+without one, following the sleeve. On a raglan or kimono sleeve, or one set into a dropped shoulder,
+this should be left out. Measured from where it starts, it would be compared with an arm measured
 from the tip of the shoulder, and judged wrong by the difference.
 
 **`inseam`.** Along the inner seam, from where the crotch seams meet to the bottom of the leg.
