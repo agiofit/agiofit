@@ -150,11 +150,14 @@ it, despite the garment being flat.
 **`shoulder_width`.** From shoulder seam to shoulder seam across the back. This is a straight
 line and not half of anything, so it is the one exception to what `_width` means here; the name
 is kept because the trade uses it. A raglan or kimono garment has no shoulder seams and should
-leave this out rather than estimate.
+leave this out rather than estimate. So should a garment whose shoulder seam is dropped down the
+arm: there the seam is not where the shoulder ends, and the number would describe the seam rather
+than the fit.
 
 **`sleeve_length`.** From the shoulder seam to the edge of the cuff, or of the hem on a sleeve
-without one, following the sleeve. On a raglan, from the base of the collar, which should be
-said in a note.
+without one, following the sleeve. A raglan or kimono sleeve, or one set into a dropped shoulder,
+should leave this out. Measured from where it starts, it would be compared with an arm measured
+from the tip of the shoulder, and judged wrong by the difference.
 
 **`inseam`.** Along the inner seam, from where the crotch seams meet to the bottom of the leg.
 
