@@ -117,3 +117,8 @@ At `result_only` a report says what kind of answer it is and nothing about the p
 answer rests on and what would improve it leave from `explained` up. A critical zone the garment
 does not publish is named, and not put down to the profile; a suggestion asks only for what the
 garment uses, critical zones first.
+
+A garment that measures less is not surer for it. A zone a garment of its category has, left out
+of the document, is a line of the explanation all the same, named at every level and counted as
+not evaluated. And what judging against category defaults costs is a share of the zones compared,
+the same on one size as on four.

@@ -133,11 +133,40 @@ CATEGORIES_WITHOUT_CRITICAL_DEFAULTS: frozenset[str] = frozenset(
 )
 
 
+# The zones a garment of a category has, for the categories this implementation can say it of:
+# where a garment of that kind is measured, as far as the mappings above reach. Not a judgement
+# about fit, and not a default a garment can override: a statement of what to expect, so that a
+# zone left out of a document can be told from a zone the category does not have. A short sleeve
+# is why a top is not expected to publish a sleeve length.
+EXPECTED_ZONES: dict[str, tuple[str, ...]] = {
+    "shirts": ("chest", "waist", "shoulders", "neck", "sleeve_length"),
+    "tops": ("chest", "waist", "hip", "shoulders"),
+    "knitwear": ("chest", "waist", "shoulders", "sleeve_length"),
+    "trousers": ("waist", "hip", "thigh", "inseam"),
+    "jeans": ("waist", "hip", "thigh", "inseam"),
+}
+
+
 def critical_zones(category: str, garment: dict) -> set[str]:
     declared = garment.get("critical_zones")
     if declared:
         return set(declared)
     return set(CRITICAL_ZONES.get(category, ()))
+
+
+def expected_zones(category: str, garment: dict) -> set[str]:
+    """The zones an answer about this garment is expected to cover, among those it can reach.
+
+    Every zone something has named: the category, through the table above, its critical zones or
+    its default ease bands, and the garment itself, through critical_zones or intended_ease. A
+    zone outside this set is one the category does not have here, and a shirt is not marked down
+    for having no inseam.
+    """
+    named = set(EXPECTED_ZONES.get(category, ()))
+    named |= {zone for (cat, zone) in DEFAULT_EASE if cat == category}
+    named |= critical_zones(category, garment)
+    named |= set(garment.get("intended_ease") or {})
+    return named & MAPPED_ZONES
 
 
 def default_ease(category: str, zone: str, linear: bool) -> tuple[float, float]:

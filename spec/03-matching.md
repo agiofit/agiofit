@@ -121,6 +121,17 @@ could not reach: a zone with no mapping, and a zone whose measurement the garmen
 both stay in the denominator. Leaving them out is what lets a document score better for saying
 less, and requirement 7 exists to forbid it.
 
+Zone coverage is counted the same way, over the zones the garment was expected to publish: the
+ones the garment names, the ones the category defaults name, and, for the categories the reference
+implementation has a list for, the zones a garment of that kind has. A zone the garment does not
+publish stays in the denominator and is named in `caveats` at every level, critical or not. A
+zone the category does not have is not expected: a shirt is not marked down for its inseam.
+
+Falling back on a category default costs a share, not a count: 0.15 when every zone compared was
+judged against a default band, and in proportion when only some were, whatever the number of
+sizes. A band belongs to the document, so the same missing band costs a garment of four sizes what
+it costs a garment of one, and publishing fewer measurements does not make it cheaper.
+
 The quality of the measurements is judged on the ones this garment uses, critical zones weighing
 three times as much, as they do when a size is chosen: a measurement no garment of this kind reads
 cannot raise or lower the answer. Each counts for its source, the producer's own confidence and

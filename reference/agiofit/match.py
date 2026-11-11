@@ -22,6 +22,7 @@ from .mapping import (
     body_key,
     critical_zones,
     default_ease,
+    expected_zones,
 )
 
 SCHEMA_VERSION = "0.1.0"
@@ -872,7 +873,9 @@ def recommend(
 
     caveats: list[str] = list(version_notes)
     improve_by: list[str] = []
-    fallback_zones = 0
+    # The zones judged against a category default because the garment declares no usable band
+    # for them. A set, since the band belongs to the document and not to a size.
+    supposed_bands: set[str] = set()
     reversed_ease_zones: set[str] = set()
     # What the garment leaves unsaid and the comparison assumes instead: a fabric that does not
     # stretch, a production tolerance of 1 cm. Counted only where the assumption was used, on a
@@ -901,6 +904,7 @@ def recommend(
     # where every zone was weighed.
     unreachable_critical = sorted(crit - MAPPED_ZONES)
     unused_ease_zones = sorted(set(declared_ease) - MAPPED_ZONES)
+    expected = expected_zones(category, garment)
 
     scored: list[tuple[float, str, list[ExplanationLine]]] = []
     # What the answer rests on, for based_on: the measurements compared, the preferences that
@@ -922,16 +926,18 @@ def recommend(
             bm = body.get(key)
             is_critical = mapping.zone in crit
             if gm is None:
-                if is_critical:
-                    # A critical zone the garment never published is not the same as a zone this
-                    # category does not have. Skipping it took the zone out of the denominator
-                    # too, so a document that left out the shoulders of a shirt scored like one
-                    # that measured them and found them right.
+                if is_critical or mapping.zone in expected:
+                    # A zone the garment never published is not the same as a zone this category
+                    # does not have. Skipping it took the zone out of the denominator too, so a
+                    # document that left out the shoulders of a shirt scored like one that
+                    # measured them and found them right. The same held for the zones that are
+                    # not critical: a shirt measured at the collar and the shoulders alone scored
+                    # above the same shirt measured at five places.
                     lines.append(
                         ExplanationLine(
                             zone=mapping.zone,
                             assessment="unknown",
-                            critical=True,
+                            critical=is_critical,
                             note=UNPUBLISHED,
                         )
                     )
@@ -980,7 +986,7 @@ def recommend(
                 hi = _cm(band["max"], band["unit"])
             else:
                 lo, hi = default_ease(category, mapping.zone, mapping.linear)
-                fallback_zones += 1
+                supposed_bands.add(mapping.zone)
 
             shift = _preference_shift(profile, category, mapping.zone, mapping.offset_scale)
             shift += history_offsets.get(mapping.zone, 0.0) * mapping.offset_scale
@@ -1131,7 +1137,7 @@ def recommend(
         best=best_score,
         runner_up=runner_up,
         history_evidence=history_evidence,
-        fallback_zones=fallback_zones,
+        supposed_bands=supposed_bands,
         n_sizes=len(scored),
         unreachable_critical_n=len(unreachable_critical),
         assumed_n=int(assumed_stretch) + int(assumed_tolerance),
@@ -1167,7 +1173,7 @@ def recommend(
             )
         )
 
-    if fallback_zones:
+    if supposed_bands:
         caveats.append(
             "The garment does not publish an intended ease for every zone; category defaults were used."
         )
@@ -1224,16 +1230,26 @@ def recommend(
             + ", ".join(unused_ease_zones)
             + "."
         )
-    # Which side is missing decides what the caveat says, as in the cold start. A critical zone
-    # the garment does not publish is named at every level, since the garment is the shop's own;
-    # one the profile lacks is named only where an explanation is sent, since naming it here
-    # would tell the verifier what the profile lacks. A shirt without its shoulders used to be
-    # put down to the profile, which had them.
-    unpublished = sorted(line.zone for line in best_lines if line.note == UNPUBLISHED)
+    # Which side is missing decides what the caveat says, as in the cold start. A zone the
+    # garment does not publish is named at every level, critical or not, since the garment is the
+    # shop's own; one the profile lacks is named only where an explanation is sent, since naming
+    # it here would tell the verifier what the profile lacks. A shirt without its shoulders used
+    # to be put down to the profile, which had them.
+    unpublished = sorted(
+        line.zone for line in best_lines if line.note == UNPUBLISHED and line.critical
+    )
     if unpublished:
         caveats.append(
             "The garment does not publish a measurement for these critical zones, so they were "
             "not evaluated: " + ", ".join(unpublished) + "."
+        )
+    left_out = sorted(
+        line.zone for line in best_lines if line.note == UNPUBLISHED and not line.critical
+    )
+    if left_out:
+        caveats.append(
+            "The garment does not publish a measurement for these zones, so they were not "
+            "evaluated: " + ", ".join(left_out) + "."
         )
     if any(line.note == UNMEASURED for line in best_lines):
         caveats.append(
@@ -1442,12 +1458,14 @@ def _label_estimate_ceiling(body: dict, lines: list[ExplanationLine], category: 
 
 
 def _confidence(
-    *, body, lines, best, runner_up, history_evidence, fallback_zones, n_sizes,
+    *, body, lines, best, runner_up, history_evidence, supposed_bands, n_sizes,
     unreachable_critical_n, assumed_n, category, now
 ) -> float:
     known = [l for l in lines if l.assessment != "unknown"]
     if not known:
         return 0.05
+    # Over the zones the garment was expected to publish, not over the ones it did: a zone left
+    # out is a line here, unknown, and counts against the answer like one the profile lacks.
     coverage = len(known) / max(1, len(lines))
     # A critical zone this implementation cannot reach counts against the score, not out of it.
     # Leaving it out of the denominator made an answer that never looked at the bust of a dress
@@ -1478,7 +1496,12 @@ def _confidence(
 
     margin = best - runner_up if n_sizes > 1 else 0.15
     margin_factor = min(1.0, margin / 0.12)
-    fallback_penalty = min(0.15, 0.03 * fallback_zones)
+    # What judging against category defaults costs is a share of the zones compared, not a count
+    # of comparisons. Counted once for every size and every zone, the same missing band cost four
+    # times as much on a garment of four sizes, reached the cap at its second zone, and cost a
+    # garment less the fewer measurements it published.
+    supposed = [line for line in known if line.zone in supposed_bands]
+    fallback_penalty = 0.15 * len(supposed) / len(known)
     # The fabric or the tolerance the garment does not declare, each assumed. A term of its own:
     # a garment with no ease bands at all reaches the cap above already, and counted there these
     # would cost nothing on exactly the garments that leave out the most.

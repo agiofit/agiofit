@@ -673,8 +673,8 @@ def test_a_critical_measurement_the_garment_omits_lowers_confidence(mature, shir
     shoulders = [l for l in report.to_json()["explanation"] if l["zone"] == "shoulders"]
     assert shoulders and shoulders[0]["assessment"] == "unknown"
 
-    # Only critical zones earn the unknown line. A shirt has no thigh, and must not be marked
-    # down for a measurement its category does not have.
+    # Only the zones a shirt has earn the unknown line. A shirt has no thigh, and must not be
+    # marked down for a measurement its category does not have.
     zones = {
         l["zone"]
         for l in recommend(mature, shirt, disclosure_level="explained").to_json()["explanation"]
@@ -2053,7 +2053,10 @@ def test_a_trouser_waist_kept_private_leaves_the_jeans_and_not_the_shirt(mature,
 
     for level in ("explained", "scoped", "full"):
         jeans = recommend(profile, _jeans(), disclosure_level=level).to_json()
-        assert {line["zone"] for line in jeans["explanation"]} == {"hip"}, level
+        zones = {line["zone"]: line["assessment"] for line in jeans["explanation"]}
+        assert "waist" not in zones, level
+        # The thigh and the inseam, which these jeans do not publish, are lines of their own.
+        assert {zone for zone, verdict in zones.items() if verdict != "unknown"} == {"hip"}, level
         assert jeans["based_on"]["body_signals"] == 1, level
         shirts = recommend(profile, shirt, disclosure_level=level).to_json()
         assert "waist" in {line["zone"] for line in shirts["explanation"]}, level
@@ -2265,6 +2268,181 @@ def test_an_assumption_is_said_where_a_cap_hides_what_it_costs(mature, shirt):
     for level in ("result_only", "explained", "scoped", "full"):
         out = recommend(broad, neither, disclosure_level=level).to_json()
         assert _assumed(out) == [STRETCH_ASSUMED, TOLERANCE_ASSUMED], level
+
+
+LEFT_OUT = "does not publish a measurement for these zones"
+SHIRT_KEYS = (
+    "neck_circumference",
+    "shoulder_width",
+    "chest_width",
+    "waist_width",
+    "sleeve_length",
+)
+
+
+def _as_its_owner_measures_it(shirt, *keys, sizes=("41",), category="shirts"):
+    """The example shirt as the builder writes one for its owner: no ease bands, no critical
+    zones, no production tolerance, and only the measurements and the sizes named."""
+    import copy
+
+    garment = copy.deepcopy(shirt)
+    del garment["intended_ease"], garment["critical_zones"], garment["production_tolerance"]
+    garment["category"] = category
+    garment["sizes"] = [size for size in garment["sizes"] if size["size_label"] in sizes]
+    for size in garment["sizes"]:
+        size["finished_measurements"] = {
+            key: value for key, value in size["finished_measurements"].items() if key in keys
+        }
+    return garment
+
+
+def test_a_garment_that_measures_less_is_not_surer_for_it(mature, shirt):
+    """It used to be. A zone the garment did not publish, unless critical, left every
+    denominator, and each zone compared against a category default cost 0.03: the one shirt its
+    owner measured at five places came out at 0.70, at the collar, the shoulders and the chest
+    at 0.77, and at the collar and the shoulders alone at 0.80. A zone a garment of its kind has
+    is now a line of the explanation whether it was published or not, named at every level and
+    never put down to the profile. No absolute number is asserted: the direction is the point."""
+    every_size = ("39", "40", "41", "42")
+    for sizes in (("41",), every_size):
+        five, three, two = (
+            recommend(mature, _as_its_owner_measures_it(shirt, *keys, sizes=sizes)).confidence
+            for keys in (SHIRT_KEYS, SHIRT_KEYS[:3], SHIRT_KEYS[:2])
+        )
+        assert five > three > two, sizes
+
+    # A sweater cut raglan leaves its shoulders and its sleeve out, as spec/02 asks: the answer
+    # says nothing of either, and is less sure than one about a sweater measured at four places.
+    knit = SHIRT_KEYS[1:]
+    four, raglan, chest_only = (
+        recommend(mature, _as_its_owner_measures_it(shirt, *keys, category="knitwear")).confidence
+        for keys in (knit, ("chest_width", "waist_width"), ("chest_width",))
+    )
+    assert four > raglan > chest_only
+
+    partial = _as_its_owner_measures_it(shirt, *SHIRT_KEYS[:3])
+    for level in ("result_only", "explained", "scoped", "full"):
+        caveats = recommend(mature, partial, disclosure_level=level).to_json()["caveats"]
+        assert [c for c in caveats if LEFT_OUT in c] == [
+            "The garment does not publish a measurement for these zones, so they were not "
+            "evaluated: sleeve_length, waist."
+        ], level
+        assert not any("critical zones" in c for c in caveats), level
+        assert not any("profile has no matching measurement" in c for c in caveats), level
+
+    out = recommend(mature, partial, disclosure_level="explained").to_json()
+    unknown = {
+        line["zone"]: line for line in out["explanation"] if line["assessment"] == "unknown"
+    }
+    assert set(unknown) == {"waist", "sleeve_length"}
+    assert not any(line["critical"] for line in unknown.values())
+
+    # A critical zone left out keeps the sentence of its own, and the two are not mixed.
+    no_shoulders = _as_its_owner_measures_it(shirt, "neck_circumference", "chest_width")
+    caveats = recommend(mature, no_shoulders).to_json()["caveats"]
+    assert any("critical zones" in c and c.endswith(": shoulders.") for c in caveats)
+    assert any(LEFT_OUT in c and c.endswith(": sleeve_length, waist.") for c in caveats)
+
+
+def test_an_ease_band_left_out_costs_once_whatever_the_sizes(mature, shirt):
+    """Judging a zone against a category default used to cost 0.03 for every size it was judged
+    on, up to 0.15: on the four sizes of the example the first band left out cost 0.12, the
+    second the rest, and the other three nothing. It is a share of the zones compared, so each
+    band costs what the one before did, on one size as on four. The bands declared here are the
+    category defaults themselves, so that leaving one out changes no judgement, only the cost."""
+    import copy
+
+    from agiofit.mapping import DEFAULT_EASE
+
+    declared = copy.deepcopy(shirt)
+    declared["intended_ease"] = {
+        zone: {"min": lo, "max": hi, "unit": "cm"}
+        for (category, zone), (lo, hi) in DEFAULT_EASE.items()
+        if category == "shirts"
+    }
+    assert set(declared["intended_ease"]) == set(shirt["intended_ease"])
+    zones = sorted(declared["intended_ease"])
+
+    for sizes in (("41",), ("39", "40", "41", "42")):
+        garment = copy.deepcopy(declared)
+        garment["sizes"] = [size for size in garment["sizes"] if size["size_label"] in sizes]
+        base = recommend(mature, garment)
+        for left_out, zone in enumerate(zones, start=1):
+            del garment["intended_ease"][zone]
+            report = recommend(mature, garment)
+            assert report.explanation == base.explanation, "the judgement is the one of before"
+            assert report.confidence == pytest.approx(base.confidence - 0.03 * left_out), (
+                sizes,
+                left_out,
+            )
+
+    # Nor is a band cheaper to leave out on a garment that publishes less: with no band at all,
+    # the shirt measured at the collar and the shoulders alone pays what the whole shirt pays.
+    for keys in (SHIRT_KEYS, SHIRT_KEYS[:2]):
+        bare = _as_its_owner_measures_it(shirt, *keys)
+        banded = copy.deepcopy(bare)
+        banded["intended_ease"] = copy.deepcopy(declared["intended_ease"])
+        cost = recommend(mature, banded).confidence - recommend(mature, bare).confidence
+        assert cost == pytest.approx(0.15), keys
+
+
+def test_a_zone_the_category_does_not_have_is_not_expected(mature, shirt):
+    """A zone left out counts only where something named it: the category, through the zones a
+    garment of its kind has, its critical zones or its default bands, or the garment itself. A
+    shirt is not marked down for its inseam, a top for a sleeve that may be short, and a
+    category with no list of its own for anything but what was named."""
+    import copy
+
+    from agiofit.mapping import expected_zones
+
+    def lines(garment):
+        # The report as the person has it: the example profile keeps its hips to itself, and a
+        # zone judged on them does not leave, published or not.
+        return {line.zone: line.assessment for line in recommend(mature, garment).explanation}
+
+    whole = lines(_as_its_owner_measures_it(shirt, *SHIRT_KEYS))
+    assert set(whole) == {"neck", "shoulders", "chest", "waist", "sleeve_length"}
+    assert "unknown" not in whole.values()
+
+    tee = lines(_as_its_owner_measures_it(shirt, "chest_width", "waist_width", category="tops"))
+    assert tee["hip"] == tee["shoulders"] == "unknown"
+    assert "sleeve_length" not in tee and "neck" not in tee
+
+    for category in ("jeans", "trousers"):
+        legs = lines(dict(_jeans(), category=category))
+        assert legs["thigh"] == legs["inseam"] == "unknown", category
+        assert not {"neck", "chest", "shoulders", "sleeve_length"} & set(legs), category
+
+    # Outerwear has no list of its own: only its critical zones are expected, and what the
+    # garment names. An ease band declared for a zone is a zone named.
+    coat = _as_its_owner_measures_it(shirt, "chest_width", category="outerwear")
+    assert lines(coat) == {"chest": "as_cut", "shoulders": "unknown"}
+    assert expected_zones("outerwear", coat) == {"chest", "shoulders"}
+    assert expected_zones("outerwear", dict(coat, critical_zones=["hip"])) == {"hip"}
+    lined = copy.deepcopy(coat)
+    lined["intended_ease"] = {"waist": {"min": 10, "max": 30, "unit": "cm"}}
+    assert lines(lined)["waist"] == "unknown"
+    caveats = recommend(mature, lined).to_json()["caveats"]
+    assert any(LEFT_OUT in c and c.endswith(": waist.") for c in caveats)
+    assert recommend(mature, lined).confidence < recommend(mature, coat).confidence
+
+
+def test_what_a_category_is_expected_to_publish_is_what_it_can_be_judged_on():
+    """The third table of category defaults, held to the other two. A zone expected of a category
+    has a mapping, or leaving it out would cost a document for something nothing here reads; and
+    a zone the category calls critical, or has a default band for, is one it is expected to
+    have."""
+    from agiofit.mapping import CRITICAL_ZONES, DEFAULT_EASE, EXPECTED_ZONES, MAPPED_ZONES
+
+    categories = set(
+        json.loads((SCHEMAS / "cut-profile.schema.json").read_text())["properties"]["category"]["enum"]
+    )
+    assert set(EXPECTED_ZONES) <= categories
+    for category, zones in EXPECTED_ZONES.items():
+        assert len(set(zones)) == len(zones), category
+        assert set(zones) <= MAPPED_ZONES, category
+        assert set(CRITICAL_ZONES.get(category, ())) & MAPPED_ZONES <= set(zones), category
+        assert {zone for (cat, zone) in DEFAULT_EASE if cat == category} <= set(zones), category
 
 
 def test_the_cli_writes_its_report_in_utf8_whatever_the_console(tmp_path, monkeypatch):
