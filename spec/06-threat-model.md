@@ -42,9 +42,10 @@ arithmetic leak is closed (`04-privacy.md`), but subtraction is not the only att
 
 **The vault operator.** Whoever runs the vault sees everything, always. No disclosure level
 protects against the party doing the computing. This is open question 1 viewed from the security
-side, and it is the strongest argument for vaults the person controls directly. The data model's
-only contribution is to keep profiles trivially exportable, so that leaving a bad operator is an
-afternoon, not a hostage negotiation.
+side, and it is the strongest argument for vaults the person controls directly. A local vault has
+no operator at all. For a hosted one, `04-privacy.md` says what the operator may do with a profile
+(`HV2`), what deleting it means (`HV3`), and keeps profiles trivially exportable (`CU1`), so that
+leaving a bad operator is an afternoon, not a hostage negotiation.
 
 **The report aggregator.** Match reports are individually innocuous and collectively a trajectory.
 A party that collects reports across shops and time — an analytics SDK, an advertising broker, a
@@ -78,18 +79,26 @@ value, so downstream systems cannot silently launder guesses into facts. Per-sou
 ## What it does not block, stated plainly
 
 Query-rate abuse: a data model has no opinion about how often it is asked, so triangulation
-resistance depends entirely on vault policy that v0.2 has not yet defined. The vault operator
-itself. Anyone with legitimate access to the device. Coercion — portability means handing the
-profile over under pressure is easy, and a format cannot tell consent from duress. And signing
-(open question 6) cuts both ways: a signature that proves a profile came from a scanner also makes
-the stolen copy more valuable, because it is now authenticated.
+resistance depends on the vault's right to decline (`04-privacy.md`, `AC2`) and on how a vault
+chooses to use it. The operator of a hosted vault. Anyone with legitimate access to the device.
+Coercion — portability means handing the profile over under pressure is easy, and a format cannot
+tell consent from duress. And signing (open question 6) cuts both ways: a signature that proves a
+profile came from a scanner also makes the stolen copy more valuable, because it is now
+authenticated.
 
 ## Requirements carried into v0.2
 
-1. The `fit_recommendation` request shape MUST allow the vault to refuse or limit queries without
-   breaking conformance; the protocol must not assume unlimited answers.
+Each is listed with where v0.2 answers it.
+
+1. The request shape MUST allow the vault to refuse or limit queries without breaking conformance;
+   the protocol must not assume unlimited answers. *Answered in `04-privacy.md`, `AC2`:* a vault
+   may decline any request or answer at a lower level, declining is sending no report, and a
+   verifier may read nothing into it.
 2. At `result_only` neither `based_on` nor `improve_by` travels (`04-privacy.md`). What they
    disclose from `explained` up, history depth and measurement inventory, MUST be weighed again
-   when the request shape is designed.
-3. Reports MUST NOT be linkable across verifiers through their identifiers.
+   when the request shape is designed. *Answered in `AC3`:* they travel only at a level the person
+   authorised for that request.
+3. Reports MUST NOT be linkable across verifiers through their identifiers. *Answered in `DI2`.*
+   One thread is left: `computed_at` is given to the second, and reports produced together for two
+   verifiers carry the same value.
 4. A `full` disclosure request SHOULD carry its justification as data, not as documentation.

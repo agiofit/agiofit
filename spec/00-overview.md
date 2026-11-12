@@ -20,7 +20,9 @@ those are needed, this specification points at existing standards rather than in
 The key words MUST, MUST NOT, SHOULD and MAY are used as in RFC 2119.
 
 A **producer** is anything that writes a Fit Profile. A **consumer** is anything that
-reads one to compute a match report. A **publisher** is whoever issues a Cut Profile.
+reads one to compute a match report. A **publisher** is whoever issues a Cut Profile. A
+**verifier** is whoever asks for a match report and receives it, typically a shop. A **vault** is
+whatever keeps a Fit Profile for a person and answers for it (`04-privacy.md`).
 
 Three requirements apply to every conformant implementation:
 
@@ -33,6 +35,12 @@ Three requirements apply to every conformant implementation:
 A validator SHOULD check `format` as an assertion. JSON Schema 2020-12 reads it as an
 annotation unless told otherwise, and a `profile_id` written as an email address then passes a
 schema that asks for a UUID.
+
+An implementation that keeps a Fit Profile for a person, or computes a match on their behalf, is
+a vault, and is held to the requirements of `04-privacy.md` under Custody and processing as well.
+One that asks for match reports is a verifier, and is held to `VE1` and `VE2` there. The
+reference implementation computes matches and holds nothing: it shows local processing and
+disclosure, and it is not a vault.
 
 ## Schema descriptions and this prose
 
@@ -78,6 +86,7 @@ instead, and corrected in the next version of the schemas.
 1. `01-fit-profile.md` — the person's side
 2. `02-cut-profile.md` — the garment's side
 3. `03-matching.md` — how a match report is produced and explained
-4. `04-privacy.md` — disclosure levels and what must never leave
+4. `04-privacy.md` — disclosure levels, custody, and what must never leave
 5. `05-open-questions.md` — what is unresolved, honestly listed
 6. `06-threat-model.md` — who attacks a portable profile, and what that means for v0.2
+7. `07-changes.md` — what to do with a document written for an earlier version

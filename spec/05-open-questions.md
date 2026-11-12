@@ -2,10 +2,13 @@
 
 Listed rather than hidden. Contributions on any of these are more useful than schema bikeshedding.
 
-1. **Who runs a fit vault, and why?** The architecture assumes an independent provider with an
-   incentive to hold profiles and no incentive to exploit them. That business model is not obvious.
-   Candidates: a co-operative funded by retailers who benefit from lower returns, a wallet provider
-   for whom fit is one credential among many, or a pure consumer subscription. None is proven.
+1. **Who runs a fit vault, and why?** What a vault has to guarantee is now stated
+   (`04-privacy.md`, Custody and processing), and the model it is written for needs no one to run
+   anything: a profile kept and matched on the person's own device. What stays open is who will
+   build a vault people want to use, and what a hosted one lives on if not the profiles it holds.
+   Candidates for the latter: a co-operative funded by retailers who benefit from lower returns, a
+   wallet provider for whom fit is one credential among many, or a pure consumer subscription. None
+   is proven, and the specification does not depend on the answer.
 
 2. **Is fit inside the Digital Product Passport perimeter?** The JRC study on textile DPP content
    needs reading before assuming it is. If measurements are excluded, the Cut Profile stays
@@ -22,8 +25,12 @@ Listed rather than hidden. Contributions on any of these are more useful than sc
    3D scanning inside retailer ecosystems. Probably a separate profile rather than a category.
 
 6. **Verifiable credentials: worth it?** Signing a fit profile proves it came from a scanner rather
-   than from a person's optimism. It also adds a great deal of machinery. Deferred to v0.2 on the
-   assumption that unsigned portability is worth more than signed friction.
+   than from a person's optimism. It also adds a great deal of machinery. A survey of wallets in
+   October 2026 sharpened the doubt: a credential is signed so that a verifier can trust its
+   issuer, and a shop has no need to verify a size, since a person who misstates theirs harms only
+   themselves; and no wallet computes, so one could carry a profile but not answer for it. v0.2
+   therefore does not depend on credentials (`ROADMAP.md`). The question stays open for the case
+   it started from: a fit provider that wants to know a measurement came from an instrument.
 
 7. **Anti-abuse.** A portable profile is also a portable target. Inference of health conditions,
    pregnancy or weight change from measurement history is possible and needs thinking about before

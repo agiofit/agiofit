@@ -2454,6 +2454,108 @@ def test_what_a_category_is_expected_to_publish_is_what_it_can_be_judged_on():
         assert {zone for (cat, zone) in DEFAULT_EASE if cat == category} <= set(zones), category
 
 
+# --------------------------------------------------------------------------- custody
+# What 04-privacy.md asks of a vault, as far as an implementation that holds nothing can show
+# it: the match is computed here, the profile is left alone, and one report leaves.
+
+EVERY_LEVEL = ("result_only", "explained", "scoped", "full")
+
+
+def test_matching_needs_no_network(mature, cold, shirt, monkeypatch, capsys):
+    """A match is computed where the profile is. The package imports nothing that reaches a
+    network or starts another program, and the whole path, the command line included, runs with
+    the network taken away."""
+    import ast
+    import socket
+
+    from agiofit.cli import main
+
+    reaching_out = {
+        "asyncio", "ftplib", "http", "imaplib", "multiprocessing", "poplib", "smtplib",
+        "socket", "socketserver", "ssl", "subprocess", "telnetlib", "urllib", "webbrowser",
+        "xmlrpc", "httpx", "requests",
+    }
+    package = ROOT / "reference" / "agiofit"
+    sources = sorted(package.glob("*.py"))
+    assert sources, "the package was not found"
+    for source in sources:
+        for node in ast.walk(ast.parse(source.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.Import):
+                names = [alias.name for alias in node.names]
+            elif isinstance(node, ast.ImportFrom) and node.level == 0:
+                names = [node.module]
+            else:
+                continue
+            for name in names:
+                assert name.split(".")[0] not in reaching_out, (source.name, name)
+
+    def no_network(*args, **kwargs):
+        raise AssertionError("matching opened a socket")
+
+    monkeypatch.setattr(socket, "socket", no_network)
+    monkeypatch.setattr(socket, "create_connection", no_network)
+    monkeypatch.setattr(socket, "getaddrinfo", no_network)
+    for profile in (mature, cold):
+        for level in EVERY_LEVEL:
+            assert recommend(profile, shirt, disclosure_level=level).to_json()
+    assert main([str(EXAMPLES / "profile-mature.json"), str(EXAMPLES / "cut-shirt.json")]) == 0
+    assert json.loads(capsys.readouterr().out)["recommended_size"] == "41"
+
+
+def test_a_report_names_neither_the_profile_nor_the_person(mature, cold, shirt):
+    """A report reaches a verifier, and the same identifier reaching two of them would let them
+    recognise one person. Nothing that identifies the profile is in it, at any level: not its
+    id, not the moment it was last written, not the name of an import."""
+    for profile in (mature, cold):
+        marks = {profile["profile_id"], profile["updated_at"]}
+        history = profile.get("history", [])
+        marks |= {entry["import_ref"] for entry in history if "import_ref" in entry}
+        assert len(marks) >= 2
+        for level in EVERY_LEVEL:
+            sent = json.dumps(recommend(profile, shirt, disclosure_level=level).to_json())
+            for mark in marks:
+                assert mark not in sent, (level, mark)
+    assert any("import_ref" in entry for entry in mature["history"]), "the example lost its import"
+
+
+def test_what_leaves_is_one_match_report(capsys):
+    """In answer to a request one document leaves, a Match Report at one level, and nothing with
+    it. The command line prints exactly that: one JSON document, valid against the schema, with
+    no key the schema does not name."""
+    import jsonschema
+
+    from agiofit.cli import main
+
+    schema = json.loads((SCHEMAS / "match-report.schema.json").read_text(encoding="utf-8"))
+    for example in ("profile-mature.json", "profile-cold-start.json"):
+        for level in EVERY_LEVEL:
+            assert main([str(EXAMPLES / example), str(EXAMPLES / "cut-shirt.json"), level]) == 0
+            printed = capsys.readouterr()
+            assert printed.err == ""
+            report = json.loads(printed.out)
+            assert isinstance(report, dict)
+            jsonschema.validate(report, schema)
+            assert set(report) <= set(schema["properties"]), (example, level)
+            assert report["disclosure_level"] == level
+            profile = json.loads((EXAMPLES / example).read_text(encoding="utf-8"))
+            assert profile["profile_id"] not in printed.out, (example, level)
+            assert profile["updated_at"] not in printed.out, (example, level)
+
+
+def test_a_match_leaves_the_profile_as_it_was(mature, cold, shirt, tmp_path, monkeypatch):
+    """The profile is the person's, and answering a request is not a reason to change it.
+    Neither document is altered by a match, at any level, and nothing is written to disk."""
+    import copy
+
+    monkeypatch.chdir(tmp_path)
+    for profile in (mature, cold):
+        for level in EVERY_LEVEL:
+            before = copy.deepcopy(profile), copy.deepcopy(shirt)
+            recommend(profile, shirt, disclosure_level=level).to_json()
+            assert (profile, shirt) == before, level
+    assert list(tmp_path.iterdir()) == []
+
+
 def test_the_cli_writes_its_report_in_utf8_whatever_the_console(tmp_path, monkeypatch):
     """On Windows, a report sent to a file with > was written in the console's code page,
     cp1252, so an id or a size label with an accent made a JSON file that whoever opens it as

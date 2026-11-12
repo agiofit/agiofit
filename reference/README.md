@@ -122,3 +122,6 @@ A garment that measures less is not surer for it. A zone a garment of its catego
 of the document, is a line of the explanation all the same, named at every level and counted as
 not evaluated. And what judging against category defaults costs is a share of the zones compared,
 the same on one size as on four.
+
+Matching needs no network and leaves the profile as it found it. What leaves is one report, and
+it names neither the profile nor the person.

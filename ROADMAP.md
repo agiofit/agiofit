@@ -20,14 +20,43 @@ without asking the author a question, since every such question is a missing lin
 if the document is valid but the answer carries a caveat about something the builder should have
 asked for and did not.
 
-## v0.2 — the vault, by reference
+## v0.2 — custody the person controls
 
-Map the profile onto W3C Verifiable Credentials and OpenID4VCI. Define the shape of a
-match request so the computation can happen inside the vault and only the report
-leaves. Invent nothing that already exists.
+Say what a vault has to guarantee, whoever builds it and wherever it runs: where the profile is
+kept, who may ask it for a match, where the match is computed, and what leaves. Define the Match
+Request, the document a verifier sends to ask for a report. Invent nothing that already exists.
 
-**Done when** a profile can be held in an existing wallet implementation and a match report
-returned without the profile ever leaving it.
+**Done when** all of this holds:
+
+1. `04-privacy.md` states custody and local processing as requirements an implementation can be
+   checked against, with what a hosted vault owes on top.
+2. The Match Request has a schema, prose and an example; the three schemas of v0.1 carry the
+   corrections listed in `07-changes.md`; and all four carry the identifiers of this version.
+3. The reference implementation shows the whole path on one machine with no network: a profile in
+   a file the person keeps, a request in that shape, an authorisation given to it as input, and a
+   report at the lower of the level asked and the level authorised.
+4. Tests show that matching uses no network, that nothing but the report leaves, that no report
+   is given without authorisation or above the level granted, and that a request for `full`
+   without a justification is declined.
+
+**Not done if** any requirement of this version can be met only by a service, or if a vault that
+runs entirely on the person's device could not conform to all of it.
+
+**Why this changed (November 2026).** The criterion used to read "a profile can be held in an
+existing wallet implementation and a match report returned without the profile ever leaving it".
+A survey of the wallets available in October 2026 found that the open ones can hold a document
+that is not an identity credential, and that none of them computes: a wallet presents a
+credential, whole or field by field, and a match report is neither. More to the point, a wallet
+exists so that a verifier can trust what an issuer signed, and a shop has no need to verify a
+size: a person who misstates theirs harms only themselves. The requirement was never the wallet.
+It was that the profile stays with the person and the match is computed where they are, and the
+criterion now says that.
+
+The specification depends on no wallet, vault or vendor, and nothing in this roadmap is an
+application this project has to ship. The command line tool is a reference for checking the
+specification, not what a person is meant to use. Mapping a profile onto W3C Verifiable
+Credentials remains possible and may be documented as one way of carrying a profile; it is not
+part of this criterion (question 6 in `spec/05-open-questions.md`).
 
 ## v0.3 — protocol extensions
 
