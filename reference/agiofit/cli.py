@@ -18,6 +18,9 @@ def main(argv: list[str] | None = None) -> int:
     profile = load_fit_profile(argv[0])
     garment = load_cut_profile(argv[1])
     report = recommend(profile, garment, disclosure_level=level)
+    # sent to a file, the report would otherwise take the console's code page, cp1252 on Windows
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
     print(json.dumps(report.to_json(), indent=2, ensure_ascii=False))
     return 0
 

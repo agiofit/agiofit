@@ -53,10 +53,11 @@ loosely, which is the honest outcome. Critical zones carry triple weight, and be
 critical zone is penalised more heavily than being too loose, because a shoulder seam cannot be let
 out.
 
-Every tolerance is read in the unit of its own measurement. A body measurement that declares none
-is not taken as exact: the reference assumes the wide end of what its kind of measurement usually
-carries, 1.5 cm for a tape or a scan and 3 cm for anything else, so that leaving the field out
-never makes a measurement look more precise than the usual one of its kind.
+Every tolerance is read in the unit of its own measurement, and on the same girth: the tolerance
+of a flat-laid width is doubled with the width. A body measurement that declares none is not taken
+as exact: the reference assumes the wide end of what its kind of measurement usually carries,
+1.5 cm for a tape or a scan and 3 cm for anything else, so that leaving the field out never makes a
+measurement look more precise than the usual one of its kind.
 
 Eight details worth stealing:
 
@@ -120,6 +121,17 @@ could not reach: a zone with no mapping, and a zone whose measurement the garmen
 both stay in the denominator. Leaving them out is what lets a document score better for saying
 less, and requirement 7 exists to forbid it.
 
+Zone coverage is counted the same way, over the zones the garment was expected to publish: the
+ones the garment names, the ones the category defaults name, and, for the categories the reference
+implementation has a list for, the zones a garment of that kind has. A zone the garment does not
+publish stays in the denominator and is named in `caveats` at every level, critical or not. A
+zone the category does not have is not expected: a shirt is not marked down for its inseam.
+
+Falling back on a category default costs a share, not a count: 0.15 when every zone compared was
+judged against a default band, and in proportion when only some were, whatever the number of
+sizes. A band belongs to the document, so the same missing band costs a garment of four sizes what
+it costs a garment of one, and publishing fewer measurements does not make it cheaper.
+
 The quality of the measurements is judged on the ones this garment uses, critical zones weighing
 three times as much, as they do when a size is chosen: a measurement no garment of this kind reads
 cannot raise or lower the answer. Each counts for its source, the producer's own confidence and
@@ -172,7 +184,7 @@ A consumer MUST NOT present a confidence from another implementation as comparab
 
 `based_on` counts what an answer used, not what the profile holds. A count of the profile would
 tell the verifier how full it is, at every level, and not what the answer rests on: for a shirt
-compared on five measurements and decided by two preferences, the example profile holds seven and
+compared on five measurements and decided by two preferences, the example profile holds eight and
 four, among them the inseam and a preference about trousers. The reference implementation counts
 the body measurements a garment was compared on, the preferences that decided a zone it compared,
 and the past purchases it read, each event once. A cold start rests on the purchases it

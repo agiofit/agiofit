@@ -41,6 +41,49 @@ other value (`00-overview.md`), although the schema does not require it there. `
 `estimated_from_size_labels` say nothing about how a trait was judged, and producers SHOULD NOT use
 them for one.
 
+### Measurement names
+
+The keys of `body.measurements` are the names a consumer looks for. This specification lists the
+ones a garment can be compared against today, and says where to put the tape, so that two people
+measuring the same body arrive at the same number and a person measuring themselves can follow it.
+Each one is the body side of a garment measurement in `02-cut-profile.md`; the difference between
+the two is the ease.
+
+Stand relaxed, in light underwear or close-fitting clothes, without shoes. A girth goes all the way
+round with the tape level, snug against the body and not pulling it in; breathe normally. A length
+follows the body. The shoulders and the arm need a second person; the rest can be taken alone.
+
+**`neck_circumference`.** Around the base of the neck, where the band of a shirt collar sits.
+
+**`shoulder_width`.** Across the back, with the tape resting on it, from the tip of one shoulder to
+the tip of the other: the point where the bone of the shoulder ends and the arm begins.
+
+**`chest_circumference`.** Around the fullest part of the chest, under the arms and across the
+shoulder blades. On a body with breasts this is the fullest part of the bust. The difference
+between bust and underbust matters for garments this version does not cover, and is left open
+(`05-open-questions.md`, question 10).
+
+**`waist_circumference`.** Around the natural waist: the narrowest part of the torso, usually a
+little above the navel. This is the waist of a shirt, not of a pair of trousers.
+
+**`trouser_waist_circumference`.** Around the body where the waistband of your trousers usually
+sits. For most people this is lower than the natural waist. A garment cut to sit higher or lower
+than usual will be judged against this height all the same: the Cut Profile does not say where a
+waistband sits.
+
+**`hip_circumference`.** Around the fullest part of the hips and seat, with the feet together.
+
+**`thigh_circumference`.** Around the fullest part of one thigh, just below the crotch.
+
+**`arm_length`.** From the tip of the shoulder, down the outside of the arm held slightly bent,
+over the elbow, to the wrist bone.
+
+**`inseam`.** Along the inside of the leg, from the crotch to the ankle bone, standing straight.
+
+Like those in `02-cut-profile.md`, these definitions are not yet proven. They were written from how
+the trade asks people to measure themselves and from consistency with the garment measurements,
+not checked against a body by someone who measures bodies for a living.
+
 ## Layer 2 — Preferences
 
 What the person *wants*, per `category` and `zone`, on the same five-point scale as the garment's

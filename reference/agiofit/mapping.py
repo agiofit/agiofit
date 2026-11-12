@@ -12,7 +12,7 @@ from dataclasses import dataclass
 class ZoneMapping:
     zone: str
     garment_key: str
-    body_key: str
+    body_key: str  # the usual one; body_key() below says which one a category reads
     doubles_when_flat_laid: bool
     linear: bool  # linear zones (shoulder, sleeve) tolerate far less ease than girths
     offset_scale: float  # how much of any shift applies here, learned or stated
@@ -39,6 +39,35 @@ ZONE_MAPPINGS: tuple[ZoneMapping, ...] = (
 # the specification, the ability to use it belongs to the implementation. Saying nothing about the
 # difference is the defect.
 MAPPED_ZONES: frozenset[str] = frozenset(m.zone for m in ZONE_MAPPINGS)
+
+# The zones whose body measurement depends on the garment, by category. The waistband of a pair of
+# trousers sits where the person wears their trousers, for most people below the natural waist a
+# shirt is cut for, and judging a waistband against the natural waist credited it with ease it
+# does not have where it is worn. Every zone not listed here reads the body_key of its row above.
+BODY_KEY_BY_CATEGORY: dict[tuple[str, str], str] = {
+    ("trousers", "waist"): "trouser_waist_circumference",
+    ("jeans", "waist"): "trouser_waist_circumference",
+}
+
+_MAPPING_BY_ZONE: dict[str, ZoneMapping] = {m.zone: m for m in ZONE_MAPPINGS}
+
+
+def body_key(category: str, zone: str) -> str:
+    """The body measurement a zone of a garment of this category is compared against.
+
+    The only way to the body side of a zone: there is no fallback from one measurement to the
+    other. A pair of trousers whose profile has no trouser waist leaves the waist unjudged, as any
+    missing measurement does; reading the natural waist instead would bring back the error the
+    table above corrects, without a word.
+    """
+    return BODY_KEY_BY_CATEGORY.get((category, zone), _MAPPING_BY_ZONE[zone].body_key)
+
+
+# Every body measurement name this implementation reads, for one category or another. Derived
+# from the two tables above, never written by hand, so a name added to either is known at once.
+KNOWN_BODY_KEYS: frozenset[str] = frozenset(m.body_key for m in ZONE_MAPPINGS) | frozenset(
+    BODY_KEY_BY_CATEGORY.values()
+)
 
 # Zones that cannot be altered or tolerated when wrong, per category.
 CRITICAL_ZONES: dict[str, tuple[str, ...]] = {
@@ -104,11 +133,40 @@ CATEGORIES_WITHOUT_CRITICAL_DEFAULTS: frozenset[str] = frozenset(
 )
 
 
+# The zones a garment of a category has, for the categories this implementation can say it of:
+# where a garment of that kind is measured, as far as the mappings above reach. Not a judgement
+# about fit, and not a default a garment can override: a statement of what to expect, so that a
+# zone left out of a document can be told from a zone the category does not have. A short sleeve
+# is why a top is not expected to publish a sleeve length.
+EXPECTED_ZONES: dict[str, tuple[str, ...]] = {
+    "shirts": ("chest", "waist", "shoulders", "neck", "sleeve_length"),
+    "tops": ("chest", "waist", "hip", "shoulders"),
+    "knitwear": ("chest", "waist", "shoulders", "sleeve_length"),
+    "trousers": ("waist", "hip", "thigh", "inseam"),
+    "jeans": ("waist", "hip", "thigh", "inseam"),
+}
+
+
 def critical_zones(category: str, garment: dict) -> set[str]:
     declared = garment.get("critical_zones")
     if declared:
         return set(declared)
     return set(CRITICAL_ZONES.get(category, ()))
+
+
+def expected_zones(category: str, garment: dict) -> set[str]:
+    """The zones an answer about this garment is expected to cover, among those it can reach.
+
+    Every zone something has named: the category, through the table above, its critical zones or
+    its default ease bands, and the garment itself, through critical_zones or intended_ease. A
+    zone outside this set is one the category does not have here, and a shirt is not marked down
+    for having no inseam.
+    """
+    named = set(EXPECTED_ZONES.get(category, ()))
+    named |= {zone for (cat, zone) in DEFAULT_EASE if cat == category}
+    named |= critical_zones(category, garment)
+    named |= set(garment.get("intended_ease") or {})
+    return named & MAPPED_ZONES
 
 
 def default_ease(category: str, zone: str, linear: bool) -> tuple[float, float]:

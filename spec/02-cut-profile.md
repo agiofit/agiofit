@@ -33,6 +33,10 @@ extension is usable for fit; the rest is how a garment gets ruined.
 **`production_tolerance`.** Two garments of the same size are not the same object. A specification
 that ignores this produces answers more precise than the physical world supports.
 
+A tolerance, this one or the `tolerance` of a single measurement, is in the same terms as the
+number it qualifies: in its unit, and on what the tape measured. A width taken flat is half a
+girth, so plus or minus 1 cm across a flat chest is plus or minus 2 cm round it.
+
 **`critical_zones`.** Where a mismatch cannot be tolerated or altered. Overrides category defaults.
 
 ## Identifying fields
@@ -121,8 +125,9 @@ centre line.
 
 **`chest_width`.** Across, from armhole seam to armhole seam, about 2 cm below the armhole.
 
-**`waist_width`.** Across, at the narrowest point. Where the garment does not narrow, halfway
-between armhole and hem.
+**`waist_width`.** On a shirt or a top, across at the narrowest point; where the garment does
+not narrow, halfway between armhole and hem. On trousers and skirts, across the top of the
+waistband, fastened.
 
 **`hip_width`.** On trousers and skirts, across at 20 cm below the waistband. On upper garments,
 across at the hem.
@@ -140,17 +145,23 @@ perpendicular to the leg fold.
 
 **`cuff_width`.** Across the cuff opening, fastened on the button normally used.
 
-**`neck_circumference`.** Collar fastened and laid flat, measured along the collar from the
-centre of the button to the centre of the buttonhole. This is the whole circumference, not half
-of it, despite the garment being flat.
+**`neck_circumference`.** Unlike the rest of the garment, the collar is measured unfastened.
+Open it out flat and measure along the middle of the collar band, the stand sewn to the neckline
+and not the fold-over collar, from the centre of the button to the centre of the buttonhole, or
+between the centres of the two halves of a snap. This is the whole circumference, not half of
+it, despite the garment being flat.
 
 **`shoulder_width`.** From shoulder seam to shoulder seam across the back. This is a straight
 line and not half of anything, so it is the one exception to what `_width` means here; the name
 is kept because the trade uses it. A raglan or kimono garment has no shoulder seams and should
-leave this out rather than estimate.
+leave this out rather than estimate. So should a garment whose shoulder seam is dropped down the
+arm: there the seam is not where the shoulder ends, and the number would describe the seam rather
+than the fit.
 
-**`sleeve_length`.** From the shoulder seam to the edge of the cuff, following the sleeve. On a
-raglan, from the base of the collar, which should be said in a note.
+**`sleeve_length`.** From the shoulder seam to the edge of the cuff, or of the hem on a sleeve
+without one, following the sleeve. On a raglan or kimono sleeve, or one set into a dropped shoulder,
+this should be left out. Measured from where it starts, it would be compared with an arm measured
+from the tip of the shoulder, and judged wrong by the difference.
 
 **`inseam`.** Along the inner seam, from where the crotch seams meet to the bottom of the leg.
 

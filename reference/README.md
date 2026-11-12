@@ -46,9 +46,14 @@ wrong corrects those zones, and only a return that does not say where moves them
 A flaw the person kept a garment despite, in the direction its verdict gives, counts half as much
 the next time sizes are compared, though the report still names it.
 
-A tolerance is read in the unit of its own measurement, and one left out counts as the wide end of
-what its kind of measurement usually carries, so leaving it out never makes a measurement look more
-precise than the usual one of its kind.
+A tolerance is read in the unit of its own measurement and on the same girth, so a flat-laid width's
+tolerance is doubled with the width. One left out counts as the wide end of what its kind of
+measurement usually carries, so leaving it out never makes a measurement look more precise than the
+usual one of its kind.
+
+A garment that does not say whether its fabric stretches is judged as rigid, and one with no
+production tolerance within 1 cm, as before; where either was assumed, the answer says so at
+every level and is less sure.
 
 Only the measurements a garment uses count towards how sure an answer is, critical zones triple.
 One declared less precise than usual for its source counts for less, and a girth loses precision
@@ -71,6 +76,9 @@ identifier may be a URL.
 
 A measurement under a name this implementation does not know is named from `explained` up, so
 the person can find it.
+
+The waistband of trousers or jeans is compared with where the person wears them, never with the
+natural waist: without `trouser_waist_circumference` it is left unjudged, and asked for.
 
 A preference moves each zone as far as a learned correction does: at the collar, where a
 centimetre is a whole size, a relaxed fit is about a size larger, not four.
@@ -109,3 +117,8 @@ At `result_only` a report says what kind of answer it is and nothing about the p
 answer rests on and what would improve it leave from `explained` up. A critical zone the garment
 does not publish is named, and not put down to the profile; a suggestion asks only for what the
 garment uses, critical zones first.
+
+A garment that measures less is not surer for it. A zone a garment of its category has, left out
+of the document, is a line of the explanation all the same, named at every level and counted as
+not evaluated. And what judging against category defaults costs is a share of the zones compared,
+the same on one size as on four.

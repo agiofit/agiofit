@@ -2,9 +2,10 @@
 
 ## The most useful things you can do
 
-1. **Publish a real Cut Profile** for a garment you own or make, and open an issue with
-   what the schema could not express. Schema gaps found against real garments are worth more than
-   any amount of design discussion.
+1. **Publish a real Cut Profile** for a garment you own or make, and tell us what the schema
+   could not express and where the measuring instructions did not hold: the "How measuring
+   went" issue form asks exactly that. Schema gaps found against real garments are worth more
+   than any amount of design discussion.
 2. **Take an open question** from `spec/05-open-questions.md` and answer it with sources.
 3. **Break the matcher.** A body and a garment where the answer is obviously wrong, as a
    failing test, is the single most valuable pull request in this repository.

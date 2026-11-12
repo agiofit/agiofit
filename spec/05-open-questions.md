@@ -41,3 +41,10 @@ Listed rather than hidden. Contributions on any of these are more useful than sc
    not by sending its replacement. An identifier would settle both, and would also be one more
    handle for following a person across systems, if it were ever taken from an order number. A
    candidate for v0.2, to be designed with that in mind.
+
+10. **Bust and underbust.** A chest taken at its fullest part serves shirts and tops, for every
+    body. A fitted dress, a bodice or a bra is decided by the bust and the underbust together, and
+    the relation between the two is what a single girth cannot express. This version names neither
+    on the body, and the `bust` zone has no mapping. Naming them, and saying how a garment is
+    compared against two body measurements at once, is left to a later version, to be checked with
+    people who cut such garments.

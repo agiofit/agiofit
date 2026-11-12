@@ -16,10 +16,13 @@ from pathlib import Path
 from .mapping import (
     ZONE_MAPPINGS,
     MAPPED_ZONES,
+    KNOWN_BODY_KEYS,
     PREFERENCE_SHIFT,
     STRETCH_CLASS_FRACTION,
+    body_key,
     critical_zones,
     default_ease,
+    expected_zones,
 )
 
 SCHEMA_VERSION = "0.1.0"
@@ -173,16 +176,16 @@ def _version_notes(profile: dict, garment: dict) -> list[str]:
 def _check_dates(profile: dict) -> None:
     """Refuse a profile with a date the calculation reads and this code cannot.
 
-    Read are the dates of the measurements this implementation knows, of every outcome and of
-    every preference that gives one. A missing one the schema requires cannot be read either.
-    A date nothing here reads, such as the profile's own updated_at, is a validator's to check.
+    Read are the dates of the measurements this implementation knows, for any category, of every
+    outcome and of every preference that gives one. A missing one the schema requires cannot be
+    read either. A date nothing here reads, such as the profile's own updated_at, is a
+    validator's to check.
     """
-    known = {mapping.body_key for mapping in ZONE_MAPPINGS}
     measurements = ((profile.get("body") or {}).get("measurements")) or {}
     unreadable = [
         f"body.measurements.{key}.observed_at ({measurement.get('observed_at')!r})"
         for key, measurement in sorted(measurements.items())
-        if key in known and _moment(measurement.get("observed_at")) is None
+        if key in KNOWN_BODY_KEYS and _moment(measurement.get("observed_at")) is None
     ]
     unreadable += [
         f"history[{index}].occurred_at ({item.get('occurred_at')!r})"
@@ -518,6 +521,17 @@ def _usable_stretch(garment: dict) -> float:
     return STRETCH_CLASS_FRACTION.get(fabric.get("stretch_class", "none"), 0.0)
 
 
+def _declares_stretch(garment: dict) -> bool:
+    """Whether the garment says how far its fabric gives across, by class or by percentage.
+
+    One that says neither is judged as if it did not stretch, as _usable_stretch has it, and the
+    answer says so. One declared rigid is not one about which nothing is known.
+    """
+    fabric = garment.get("fabric") or {}
+    across = (fabric.get("stretch_pct") or {}).get("horizontal")
+    return "stretch_class" in fabric or across is not None
+
+
 def _label_key(label: object) -> str | None:
     """A size label as a person reads it, to line a past purchase up against a garment's sizes.
 
@@ -825,7 +839,7 @@ def recommend(
     if now.tzinfo is None:
         now = now.replace(tzinfo=timezone.utc)
     disclosure_level = _disclosure_level(profile, disclosure_level)
-    withheld_zones = _withheld_zones(profile)
+    withheld_zones = _withheld_zones(profile, garment.get("category", ""))
     # What the report says about a layer the person listed whole in never_share stays on the
     # report, for the person, and to_json keeps it from the verifier. With the history listed,
     # "Sizes already returned for this exact garment were removed from the candidates: 41."
@@ -859,8 +873,18 @@ def recommend(
 
     caveats: list[str] = list(version_notes)
     improve_by: list[str] = []
-    fallback_zones = 0
+    # The zones judged against a category default because the garment declares no usable band
+    # for them. A set, since the band belongs to the document and not to a size.
+    supposed_bands: set[str] = set()
     reversed_ease_zones: set[str] = set()
+    # What the garment leaves unsaid and the comparison assumes instead: a fabric that does not
+    # stretch, a production tolerance of 1 cm. Counted only where the assumption was used, on a
+    # girth for the fabric and on a measurement without a tolerance of its own for the tolerance,
+    # so an answer that compared nothing assumed neither. Each used to pass without a word, and an
+    # answer about a garment that declares neither was as sure as one about a garment that does.
+    declares_stretch = _declares_stretch(garment)
+    declares_tolerance = bool(garment.get("production_tolerance"))
+    assumed_stretch = assumed_tolerance = False
 
     # A measurement this implementation has no mapping for is silently dropped
     # otherwise. Saying so is the difference between an answer that can be
@@ -880,6 +904,7 @@ def recommend(
     # where every zone was weighed.
     unreachable_critical = sorted(crit - MAPPED_ZONES)
     unused_ease_zones = sorted(set(declared_ease) - MAPPED_ZONES)
+    expected = expected_zones(category, garment)
 
     scored: list[tuple[float, str, list[ExplanationLine]]] = []
     # What the answer rests on, for based_on: the measurements compared, the preferences that
@@ -897,19 +922,22 @@ def recommend(
 
         for mapping in ZONE_MAPPINGS:
             gm = finished.get(mapping.garment_key)
-            bm = body.get(mapping.body_key)
+            key = body_key(category, mapping.zone)
+            bm = body.get(key)
             is_critical = mapping.zone in crit
             if gm is None:
-                if is_critical:
-                    # A critical zone the garment never published is not the same as a zone this
-                    # category does not have. Skipping it took the zone out of the denominator
-                    # too, so a document that left out the shoulders of a shirt scored like one
-                    # that measured them and found them right.
+                if is_critical or mapping.zone in expected:
+                    # A zone the garment never published is not the same as a zone this category
+                    # does not have. Skipping it took the zone out of the denominator too, so a
+                    # document that left out the shoulders of a shirt scored like one that
+                    # measured them and found them right. The same held for the zones that are
+                    # not critical: a shirt measured at the collar and the shoulders alone scored
+                    # above the same shirt measured at five places.
                     lines.append(
                         ExplanationLine(
                             zone=mapping.zone,
                             assessment="unknown",
-                            critical=True,
+                            critical=is_critical,
                             note=UNPUBLISHED,
                         )
                     )
@@ -925,17 +953,21 @@ def recommend(
                 )
                 continue
 
-            compared.add(mapping.body_key)
+            compared.add(key)
             preference = _deciding_preference(profile, category, mapping.zone)
             if preference is not None and all(preference is not p for p in deciding):
                 deciding.append(preference)
             if abs(history_offsets.get(mapping.zone, 0.0)) > 0.01:
                 offset_applied = True
 
-            g_cm = _cm(gm["value"], gm["unit"])
-            if flat and mapping.doubles_when_flat_laid:
-                g_cm *= 2
+            # A width taken flat is half a girth, and so is its tolerance: one factor turns both
+            # into girths, so the two cannot come apart. A tolerance follows its measurement the
+            # way it follows its unit.
+            to_girth = 2.0 if flat and mapping.doubles_when_flat_laid else 1.0
+            g_cm = _cm(gm["value"], gm["unit"]) * to_girth
             g_cm *= 1 + (stretch if not mapping.linear else 0.0)
+            if not mapping.linear and not declares_stretch:
+                assumed_stretch = True
             b_cm = _cm(bm["value"], bm["unit"])
             ease = g_cm - b_cm
 
@@ -954,14 +986,17 @@ def recommend(
                 hi = _cm(band["max"], band["unit"])
             else:
                 lo, hi = default_ease(category, mapping.zone, mapping.linear)
-                fallback_zones += 1
+                supposed_bands.add(mapping.zone)
 
             shift = _preference_shift(profile, category, mapping.zone, mapping.offset_scale)
             shift += history_offsets.get(mapping.zone, 0.0) * mapping.offset_scale
             lo, hi = lo + shift, hi + shift
 
-            # A garment's tolerance is in the unit of its measurement too.
+            # A garment's tolerance is in the unit of its measurement too, and on the same girth.
             garment_tol = _cm(gm["tolerance"], gm["unit"]) if "tolerance" in gm else prod_tol_cm
+            garment_tol *= to_girth
+            if "tolerance" not in gm and not declares_tolerance:
+                assumed_tolerance = True
             meas_tol = garment_tol + _body_tolerance_cm(bm)
             slack = meas_tol
             assessment = _assess(ease, lo, hi, slack)
@@ -1102,13 +1137,15 @@ def recommend(
         best=best_score,
         runner_up=runner_up,
         history_evidence=history_evidence,
-        fallback_zones=fallback_zones,
+        supposed_bands=supposed_bands,
         n_sizes=len(scored),
         unreachable_critical_n=len(unreachable_critical),
+        assumed_n=int(assumed_stretch) + int(assumed_tolerance),
+        category=category,
         now=now,
     )
 
-    ceiling = _label_estimate_ceiling(body, best_lines)
+    ceiling = _label_estimate_ceiling(body, best_lines, category)
     if confidence > ceiling:
         confidence = ceiling
         caveats.append(
@@ -1136,10 +1173,18 @@ def recommend(
             )
         )
 
-    if fallback_zones:
+    if supposed_bands:
         caveats.append(
             "The garment does not publish an intended ease for every zone; category defaults were used."
         )
+    # About the garment, not the profile, so said at every level.
+    if assumed_stretch:
+        caveats.append(
+            "The garment does not say whether its fabric stretches, so it was judged as if it "
+            "did not."
+        )
+    if assumed_tolerance:
+        caveats.append("The garment does not declare a production tolerance, so 1 cm was assumed.")
     duplicate_labels = sorted(
         {
             size["size_label"]
@@ -1185,16 +1230,26 @@ def recommend(
             + ", ".join(unused_ease_zones)
             + "."
         )
-    # Which side is missing decides what the caveat says, as in the cold start. A critical zone
-    # the garment does not publish is named at every level, since the garment is the shop's own;
-    # one the profile lacks is named only where an explanation is sent, since naming it here
-    # would tell the verifier what the profile lacks. A shirt without its shoulders used to be
-    # put down to the profile, which had them.
-    unpublished = sorted(line.zone for line in best_lines if line.note == UNPUBLISHED)
+    # Which side is missing decides what the caveat says, as in the cold start. A zone the
+    # garment does not publish is named at every level, critical or not, since the garment is the
+    # shop's own; one the profile lacks is named only where an explanation is sent, since naming
+    # it here would tell the verifier what the profile lacks. A shirt without its shoulders used
+    # to be put down to the profile, which had them.
+    unpublished = sorted(
+        line.zone for line in best_lines if line.note == UNPUBLISHED and line.critical
+    )
     if unpublished:
         caveats.append(
             "The garment does not publish a measurement for these critical zones, so they were "
             "not evaluated: " + ", ".join(unpublished) + "."
+        )
+    left_out = sorted(
+        line.zone for line in best_lines if line.note == UNPUBLISHED and not line.critical
+    )
+    if left_out:
+        caveats.append(
+            "The garment does not publish a measurement for these zones, so they were not "
+            "evaluated: " + ", ".join(left_out) + "."
         )
     if any(line.note == UNMEASURED for line in best_lines):
         caveats.append(
@@ -1353,27 +1408,31 @@ def _unknown_measurements(profile: dict, body: dict) -> list[str]:
     never = _never_shared(profile)
     if "body" in never:
         return []
-    known = {m.body_key for m in ZONE_MAPPINGS}
     return sorted(
-        key for key in body if key not in known and not key.startswith("x_") and key not in never
+        key
+        for key in body
+        if key not in KNOWN_BODY_KEYS and not key.startswith("x_") and key not in never
     )
 
 
-def _withheld_zones(profile: dict) -> list[str]:
+def _withheld_zones(profile: dict, category: str) -> list[str]:
     """The zones whose explanation must never leave, because the person listed them.
 
-    never_share names measurement keys or whole layers. A zone is withheld when its body
-    measurement is named, or when the whole body layer is. The measurement still counts
-    towards the answer: the computation happens where the profile lives, and what the
-    list governs is what leaves it.
+    never_share names measurement keys or whole layers. A zone is withheld when the body
+    measurement it is compared against for this category is named, or when the whole body
+    layer is: a trouser waist kept private takes the waist out of a pair of jeans, and leaves
+    the waist of a shirt where it is. The measurement still counts towards the answer: the
+    computation happens where the profile lives, and what the list governs is what leaves it.
     """
     never = _never_shared(profile)
     if not never:
         return []
-    return sorted(m.zone for m in ZONE_MAPPINGS if "body" in never or m.body_key in never)
+    return sorted(
+        m.zone for m in ZONE_MAPPINGS if "body" in never or body_key(category, m.zone) in never
+    )
 
 
-def _label_estimate_ceiling(body: dict, lines: list[ExplanationLine]) -> float:
+def _label_estimate_ceiling(body: dict, lines: list[ExplanationLine], category: str) -> float:
     """How confident an answer may be, given which of its measurements are label estimates.
 
     A size label from one brand says close to nothing about another's, which is why a cold
@@ -1383,14 +1442,13 @@ def _label_estimate_ceiling(body: dict, lines: list[ExplanationLine]) -> float:
     used that are not label estimates, critical zones weighing as much as they do when the
     size is chosen. Measurements the garment does not use are not counted, either way.
     """
-    body_keys = {m.zone: m.body_key for m in ZONE_MAPPINGS}
     total = estimated = 0.0
     for line in lines:
         if line.assessment == "unknown":
             continue
         weight = CRITICAL_WEIGHT if line.critical else 1.0
         total += weight
-        measurement = body.get(body_keys.get(line.zone, "")) or {}
+        measurement = body.get(body_key(category, line.zone)) or {}
         if measurement.get("source") == "estimated_from_size_labels":
             estimated += weight
     if not total or not estimated:
@@ -1400,12 +1458,14 @@ def _label_estimate_ceiling(body: dict, lines: list[ExplanationLine]) -> float:
 
 
 def _confidence(
-    *, body, lines, best, runner_up, history_evidence, fallback_zones, n_sizes,
-    unreachable_critical_n, now
+    *, body, lines, best, runner_up, history_evidence, supposed_bands, n_sizes,
+    unreachable_critical_n, assumed_n, category, now
 ) -> float:
     known = [l for l in lines if l.assessment != "unknown"]
     if not known:
         return 0.05
+    # Over the zones the garment was expected to publish, not over the ones it did: a zone left
+    # out is a line here, unknown, and counts against the answer like one the profile lacks.
     coverage = len(known) / max(1, len(lines))
     # A critical zone this implementation cannot reach counts against the score, not out of it.
     # Leaving it out of the denominator made an answer that never looked at the bust of a dress
@@ -1423,12 +1483,12 @@ def _confidence(
     # let a measurement no shirt reads, or a handful of invented ones, move every answer. The
     # history behind the answer is weighed the same way, zone by zone, so an old outcome says less
     # about a girth, as an old measurement does, and as much as ever about a length.
-    body_keys = {m.zone: (m.body_key, m.linear) for m in ZONE_MAPPINGS}
+    linear_zones = {m.zone: m.linear for m in ZONE_MAPPINGS}
     weighted = history = total = 0.0
     for line in known:
-        key, linear = body_keys[line.zone]
+        measurement = body[body_key(category, line.zone)]
         weight = CRITICAL_WEIGHT if line.critical else 1.0
-        weighted += weight * _measurement_quality(body[key], linear, now)
+        weighted += weight * _measurement_quality(measurement, linear_zones[line.zone], now)
         history += weight * min(1.0, history_evidence.get(line.zone, 0.0) / 6.0)
         total += weight
     source_quality = weighted / total
@@ -1436,7 +1496,16 @@ def _confidence(
 
     margin = best - runner_up if n_sizes > 1 else 0.15
     margin_factor = min(1.0, margin / 0.12)
-    fallback_penalty = min(0.15, 0.03 * fallback_zones)
+    # What judging against category defaults costs is a share of the zones compared, not a count
+    # of comparisons. Counted once for every size and every zone, the same missing band cost four
+    # times as much on a garment of four sizes, reached the cap at its second zone, and cost a
+    # garment less the fewer measurements it published.
+    supposed = [line for line in known if line.zone in supposed_bands]
+    fallback_penalty = 0.15 * len(supposed) / len(known)
+    # The fabric or the tolerance the garment does not declare, each assumed. A term of its own:
+    # a garment with no ease bands at all reaches the cap above already, and counted there these
+    # would cost nothing on exactly the garments that leave out the most.
+    assumed_penalty = 0.03 * assumed_n
 
     raw = (
         0.05
@@ -1446,6 +1515,7 @@ def _confidence(
         + 0.15 * margin_factor
         + 0.10 * history_factor
         - fallback_penalty
+        - assumed_penalty
     )
     return max(0.0, min(1.0, round(raw, 3)))
 
@@ -1471,7 +1541,8 @@ def _improvements(body: dict, profile: dict, garment: dict) -> list[str]:
     def nameable(key: str) -> bool:
         return "body" not in never and key not in never
 
-    crit = critical_zones(garment.get("category", ""), garment)
+    category = garment.get("category", "")
+    crit = critical_zones(category, garment)
     published = {
         key
         for size in garment.get("sizes", [])
@@ -1479,9 +1550,9 @@ def _improvements(body: dict, profile: dict, garment: dict) -> list[str]:
     }
     used = sorted(
         (m for m in ZONE_MAPPINGS if m.garment_key in published),
-        key=lambda m: (m.zone not in crit, m.body_key),
+        key=lambda m: (m.zone not in crit, body_key(category, m.zone)),
     )
-    needed = [m.body_key for m in used]
+    needed = [body_key(category, m.zone) for m in used]
     missing = [k for k in needed if k not in body and nameable(k)]
     for key in missing[:3]:
         out.append(f"Add a measurement for {key.replace('_', ' ')}.")

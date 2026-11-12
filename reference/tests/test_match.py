@@ -267,6 +267,35 @@ def test_a_tolerance_is_read_in_the_unit_of_its_measurement(mature, shirt):
     assert _answer(mature, garment) == _answer(mature, shirt)
 
 
+def test_a_flat_width_is_half_a_girth_and_so_is_its_tolerance(mature, shirt):
+    """Plus or minus 1 cm across a flat chest is plus or minus 2 cm round it. The width was doubled
+    and its tolerance was not, so a garment measured flat looked twice as precise at its girths as
+    the same garment measured round: a 41 whose chest sat 1.5 cm past the brand's band was called
+    too loose, and named only as the closest size, though the shirt itself varies by 2 cm there.
+    The collar is laid flat too, but measured whole, and keeps its tolerance."""
+    import copy
+
+    person = copy.deepcopy(mature)
+    # Taken as exact, so that only the garment's tolerance is left to judge by.
+    for key in ("chest_circumference", "neck_circumference"):
+        person["body"]["measurements"][key]["tolerance"] = 0
+
+    # The 41 alone: 16 cm of ease at the chest, under the shirt's 1 cm production tolerance, and
+    # 2 cm at the collar, under its own 0.5 cm.
+    garment = copy.deepcopy(shirt)
+    garment["sizes"] = [size for size in garment["sizes"] if size["size_label"] == "41"]
+
+    def judged(zone, low, high):
+        cut = copy.deepcopy(garment)
+        cut["intended_ease"][zone] = {"min": low, "max": high, "unit": "cm"}
+        report = recommend(person, cut, disclosure_level="explained")
+        return next(line.assessment for line in report.explanation if line.zone == zone)
+
+    assert judged("chest", 12, 14.5) == "roomy"  # 1.5 cm past: inside the 2 cm round the chest
+    assert judged("chest", 12, 13.5) == "too_loose"  # 2.5 cm past: outside it
+    assert judged("neck", 0.5, 1.25) == "too_loose"  # 0.75 cm past a whole 0.5 cm
+
+
 def test_a_tolerance_left_out_is_not_the_strictest_one(mature, shirt):
     """A waist written from memory with no tolerance used to count as precise to half a
     centimetre, stricter than a waist taken with a tape and declared within 1.5. On a 41 that
@@ -653,8 +682,8 @@ def test_a_critical_measurement_the_garment_omits_lowers_confidence(mature, shir
     shoulders = [l for l in report.to_json()["explanation"] if l["zone"] == "shoulders"]
     assert shoulders and shoulders[0]["assessment"] == "unknown"
 
-    # Only critical zones earn the unknown line. A shirt has no thigh, and must not be marked
-    # down for a measurement its category does not have.
+    # Only the zones a shirt has earn the unknown line. A shirt has no thigh, and must not be
+    # marked down for a measurement its category does not have.
     zones = {
         l["zone"]
         for l in recommend(mature, shirt, disclosure_level="explained").to_json()["explanation"]
@@ -962,14 +991,32 @@ def _slim(shirt):
     return slim
 
 
+def _full_at_the_waist(shirt):
+    """A cut where the 40 and the 41 each get one thing wrong: the 40 is snug at the shoulders,
+    and the 41, cut fuller at the waist than the closer waist the brand intends, is loose there.
+    With the example's own grading the two sizes are one step apart at the waist and the answer
+    turned on a few thousandths; the fuller 41 makes it turn on the flaw kept before."""
+    import copy
+
+    full = copy.deepcopy(shirt)
+    full["cut_profile_id"] = "sartoria-esempio:POPLIN-EASY:2026"
+    full["style_id"] = "POPLIN-EASY"
+    full["style_name"] = "Easy Poplin Shirt"
+    full["intended_ease"]["waist"] = {"min": 12, "max": 16, "unit": "cm"}
+    for size in full["sizes"]:
+        if size["size_label"] == "41":
+            size["finished_measurements"]["waist_width"]["value"] = 58
+    return full
+
+
 def test_a_flaw_kept_before_counts_for_less_than_one_returned_before(mature, shirt):
     """The mature profile kept the 41 despite a roomy waist, and sent back two 40s for tight
-    shoulders. On a slimmer cut the 40 has snug shoulders and the 41 a loose waist. The kept
+    shoulders. On a cut where the 40 has snug shoulders and the 41 a loose waist, the kept
     compromise used to count for nothing, and the answer was the 40: the tight shoulders again."""
     import copy
 
-    slim = _slim(shirt)
-    report = recommend(mature, slim, disclosure_level="explained")
+    cut = _full_at_the_waist(shirt)
+    report = recommend(mature, cut, disclosure_level="explained")
     assert report.recommended_size == "41"
     # The judgement is not softened: the waist is still reported as it is.
     waist = next(line for line in report.explanation if line.zone == "waist")
@@ -978,7 +1025,7 @@ def test_a_flaw_kept_before_counts_for_less_than_one_returned_before(mature, shi
     without = copy.deepcopy(mature)
     for item in without["history"]:
         item.pop("kept_despite", None)
-    assert recommend(without, slim).recommended_size == "40"
+    assert recommend(without, cut).recommended_size == "40"
 
 
 def test_a_kept_flaw_teaches_only_the_direction_it_was_kept_in(mature, shirt):
@@ -986,20 +1033,20 @@ def test_a_kept_flaw_teaches_only_the_direction_it_was_kept_in(mature, shirt):
     entry there is nothing to learn, and a flaw the other way is not what was tolerated."""
     import copy
 
-    slim = _slim(shirt)
+    cut = _full_at_the_waist(shirt)
 
     no_verdict = copy.deepcopy(mature)
     for item in no_verdict["history"]:
         kept = item.get("kept_despite") or []
         item["zone_feedback"] = [f for f in item.get("zone_feedback", []) if f["zone"] not in kept]
-    assert recommend(no_verdict, slim).recommended_size == "40"
+    assert recommend(no_verdict, cut).recommended_size == "40"
 
     other_way = copy.deepcopy(mature)
     for item in other_way["history"]:
         for verdict in item.get("zone_feedback", []):
             if verdict["zone"] in (item.get("kept_despite") or []):
                 verdict["verdict"] = "snug"
-    assert recommend(other_way, slim).recommended_size == "40"
+    assert recommend(other_way, cut).recommended_size == "40"
 
 
 def _with_preferences(profile, *preferences):
@@ -1919,3 +1966,511 @@ def test_a_suggestion_asks_only_for_what_the_garment_uses(mature, cold, shirt):
         "Add a measurement for shoulder width.",
         "Add a measurement for arm length.",
     ]
+
+
+# --------------------------------------------------------------------- the waist of trousers
+
+
+def _jeans():
+    """Two sizes of a jean laid flat, apart only at the waist: the hips are the same in both, so
+    the waist alone decides between them."""
+    return {
+        "schema_version": "0.1.0",
+        "cut_profile_id": "test-jeans-waist",
+        "category": "jeans",
+        "size_system": "EU",
+        "measurement_method": "flat_laid",
+        "provenance": {"published_by": "brand"},
+        "sizes": [
+            {
+                "size_label": label,
+                "finished_measurements": {
+                    "waist_width": {"value": waist, "unit": "cm"},
+                    "hip_width": {"value": 55, "unit": "cm"},
+                },
+            }
+            for label, waist in (("46", 44.5), ("48", 47))
+        ],
+    }
+
+
+def _worn_low(mature):
+    """The mature profile with a natural waist of 88 cm and trousers worn at 94, keeping nothing
+    private, so that every zone can be read in the explanation."""
+    import copy
+
+    profile = copy.deepcopy(mature)
+    measurements = profile["body"]["measurements"]
+    measurements["waist_circumference"]["value"] = 88
+    measurements["trouser_waist_circumference"]["value"] = 94
+    profile["disclosure_defaults"]["never_share"] = []
+    return profile
+
+
+def test_a_waistband_is_compared_with_where_trousers_are_worn(mature, monkeypatch):
+    """The waist of a jean was judged against the natural waist, the one a shirt is cut for.
+    Laid flat at 44.5 cm, a waistband is 89 cm round: five short of where this person wears
+    trousers, and one more than the natural waist, so it came out as cut, and the jean that does
+    not close was the one recommended."""
+    profile = _worn_low(mature)
+    report = recommend(profile, _jeans())
+    assert report.recommended_size == "48"
+    waist = next(line for line in report.explanation if line.zone == "waist")
+    assert waist.ease_cm == 0.0, "47 laid flat is 94 round, against 94"
+
+    # The counterproof: compared with the natural waist, as before, the smaller one wins.
+    monkeypatch.setattr("agiofit.mapping.BODY_KEY_BY_CATEGORY", {})
+    assert recommend(profile, _jeans()).recommended_size == "46"
+
+
+def test_without_a_trouser_waist_a_waistband_is_not_judged(mature):
+    """Falling back on the natural waist would bring back, without a word, the error the
+    trouser waist corrects. Without one, the waist of a jean is left unjudged, as a zone without
+    its measurement always is; it is critical, so it still counts against the answer, and the
+    person is asked for it."""
+    import copy
+
+    profile = _worn_low(mature)
+    without = copy.deepcopy(profile)
+    del without["body"]["measurements"]["trouser_waist_circumference"]
+
+    report = recommend(without, _jeans())
+    waist = next(line for line in report.explanation if line.zone == "waist")
+    assert waist.assessment == "unknown" and waist.critical and waist.ease_cm is None
+    assert report.confidence < recommend(profile, _jeans()).confidence
+
+    # Not judged on the natural waist in any way: moving it changes nothing at all.
+    elsewhere = copy.deepcopy(without)
+    elsewhere["body"]["measurements"]["waist_circumference"]["value"] = 120
+    for level in ("result_only", "explained", "scoped", "full"):
+        assert (
+            recommend(elsewhere, _jeans(), disclosure_level=level).to_json()
+            == recommend(without, _jeans(), disclosure_level=level).to_json()
+        ), level
+
+    out = recommend(without, _jeans(), disclosure_level="explained").to_json()
+    assert "Add a measurement for trouser waist circumference." in out["improve_by"]
+
+
+def test_a_trouser_waist_kept_private_leaves_the_jeans_and_not_the_shirt(mature, shirt):
+    """A zone goes with the measurement it is compared against. Kept private, the trouser waist
+    takes the waist out of every explanation of a jean, and is never named or counted; the
+    waist of a shirt, judged on the natural waist, stays where it is. The measurement still
+    counts towards the answer."""
+    profile = _worn_low(mature)
+    profile["disclosure_defaults"]["never_share"] = ["trouser_waist_circumference"]
+
+    for level in ("explained", "scoped", "full"):
+        jeans = recommend(profile, _jeans(), disclosure_level=level).to_json()
+        zones = {line["zone"]: line["assessment"] for line in jeans["explanation"]}
+        assert "waist" not in zones, level
+        # The thigh and the inseam, which these jeans do not publish, are lines of their own.
+        assert {zone for zone, verdict in zones.items() if verdict != "unknown"} == {"hip"}, level
+        assert jeans["based_on"]["body_signals"] == 1, level
+        shirts = recommend(profile, shirt, disclosure_level=level).to_json()
+        assert "waist" in {line["zone"] for line in shirts["explanation"]}, level
+
+    for level in ("result_only", "explained", "scoped", "full"):
+        said = json.dumps(recommend(profile, _jeans(), disclosure_level=level).to_json())
+        assert "trouser_waist" not in said and "trouser waist" not in said, level
+
+    assert recommend(profile, _jeans()).recommended_size == "48"
+
+
+def test_how_sure_an_answer_about_a_jean_is_rests_on_the_trouser_waist(mature):
+    """How far an answer can lean on its measurements, and how far label estimates cap it, are
+    judged on the measurements compared. For a jean that is the trouser waist: one estimated from
+    size labels makes the answer less sure, and a natural waist estimated from them changes
+    nothing, neither the confidence nor what the caveats say."""
+    import copy
+
+    profile = _worn_low(mature)
+    base = recommend(profile, _jeans(), disclosure_level="full").to_json()
+
+    natural = copy.deepcopy(profile)
+    natural["body"]["measurements"]["waist_circumference"]["source"] = "estimated_from_size_labels"
+    assert recommend(natural, _jeans(), disclosure_level="full").to_json() == base
+
+    worn = copy.deepcopy(profile)
+    worn["body"]["measurements"]["trouser_waist_circumference"]["source"] = (
+        "estimated_from_size_labels"
+    )
+    assert recommend(worn, _jeans()).confidence < base["confidence"]
+
+
+def test_the_trouser_waist_is_a_name_this_implementation_knows(mature, shirt):
+    """Only trousers and jeans read the trouser waist, but the name is known whatever the
+    garment: no answer lists it among the names this implementation does not know, and a date on
+    it that cannot be read stops the answer for a shirt, as one on the inseam, which no shirt
+    reads either, already did."""
+    import copy
+
+    for garment in (shirt, _jeans()):
+        out = recommend(mature, garment, disclosure_level="explained").to_json()
+        assert not any("does not know" in c for c in out["caveats"])
+
+    for key in ("trouser_waist_circumference", "inseam"):
+        profile = copy.deepcopy(mature)
+        profile["body"]["measurements"][key]["observed_at"] = "14/03/2026"
+        with pytest.raises(UnreadableDate, match=key + r"\.observed_at"):
+            recommend(profile, shirt)
+
+
+def test_the_trouser_waist_changes_nothing_for_a_shirt(mature, shirt):
+    """A shirt is judged on the natural waist, as it always was: the example profile gives the
+    same report at every level with its trouser waist and without it."""
+    import copy
+
+    without = copy.deepcopy(mature)
+    del without["body"]["measurements"]["trouser_waist_circumference"]
+    for level in ("result_only", "explained", "scoped", "full"):
+        assert (
+            recommend(mature, shirt, disclosure_level=level).to_json()
+            == recommend(without, shirt, disclosure_level=level).to_json()
+        ), level
+
+
+# --------------------------------------------------------------------- what a garment leaves out
+
+STRETCH_ASSUMED = "does not say whether its fabric stretches"
+TOLERANCE_ASSUMED = "does not declare a production tolerance"
+
+
+def _assumed(out):
+    """Which of the two assumptions a serialised report says it made."""
+    return [
+        phrase
+        for phrase in (STRETCH_ASSUMED, TOLERANCE_ASSUMED)
+        if any(phrase in caveat for caveat in out["caveats"])
+    ]
+
+
+def test_a_garment_that_leaves_out_its_fabric_or_its_tolerance_is_told_and_counted(mature, shirt):
+    """Without its fabric, or without its production tolerance, the example shirt used to get the
+    answer and the confidence of the shirt that declares both, judged rigid and within 1 cm
+    without a word. The judgement is the same, since rigid and 1 cm are what the example
+    declares, but each assumption is said, at every level, and costs 0.03."""
+    import copy
+
+    base = recommend(mature, shirt)
+    no_fabric = copy.deepcopy(shirt)
+    del no_fabric["fabric"]
+    no_tolerance = copy.deepcopy(shirt)
+    del no_tolerance["production_tolerance"]
+    neither = copy.deepcopy(no_fabric)
+    del neither["production_tolerance"]
+
+    cases = (
+        (shirt, [], 0.0),
+        (no_fabric, [STRETCH_ASSUMED], 0.03),
+        (no_tolerance, [TOLERANCE_ASSUMED], 0.03),
+        (neither, [STRETCH_ASSUMED, TOLERANCE_ASSUMED], 0.06),
+    )
+    for garment, assumed, cost in cases:
+        report = recommend(mature, garment)
+        assert report.confidence == pytest.approx(base.confidence - cost), assumed
+        assert report.explanation == base.explanation, "the calculation is the one of before"
+        for level in ("result_only", "explained", "scoped", "full"):
+            out = recommend(mature, garment, disclosure_level=level).to_json()
+            assert _assumed(out) == assumed, (assumed, level)
+
+    # Without its ease bands, as the builder writes a shirt for its owner, the answer is at the
+    # cap of what category defaults cost already, and the two assumptions cost on top of it.
+    bandless = copy.deepcopy(shirt)
+    del bandless["intended_ease"]
+    bare = copy.deepcopy(bandless)
+    del bare["fabric"], bare["production_tolerance"]
+    expected = recommend(mature, bandless).confidence - 0.06
+    assert recommend(mature, bare).confidence == pytest.approx(expected)
+
+
+def test_a_fabric_declared_rigid_is_not_a_fabric_nobody_described(mature, shirt):
+    """What is undeclared is whether the fabric gives across: by class, or by a percentage
+    across. A shirt that says it does not stretch is a shirt about which that is known; one that
+    gives its composition, or how far it stretches lengthwise, has still not said it."""
+    import copy
+
+    base = recommend(mature, shirt).confidence
+    for fabric, assumed in (
+        ({"stretch_class": "none"}, []),
+        ({"stretch_pct": {"horizontal": 0}}, []),
+        ({"composition": "100% cotton"}, [STRETCH_ASSUMED]),
+        ({"stretch_pct": {"vertical": 4}}, [STRETCH_ASSUMED]),
+    ):
+        garment = copy.deepcopy(shirt)
+        garment["fabric"] = fabric
+        report = recommend(mature, garment)
+        assert _assumed(report.to_json()) == assumed, fabric
+        assert report.confidence == pytest.approx(base - 0.03 * len(assumed)), fabric
+
+
+def test_a_tolerance_given_measurement_by_measurement_is_a_declared_one(mature, shirt):
+    """A garment without a production tolerance assumes 1 cm only for the measurements it
+    compares without a tolerance of their own. With one on every measurement nothing is
+    assumed; a measurement that was not compared, because the profile has nothing to compare it
+    with, assumes nothing either."""
+    import copy
+
+    each = copy.deepcopy(shirt)
+    del each["production_tolerance"]
+    for size in each["sizes"]:
+        for measurement in size["finished_measurements"].values():
+            measurement.setdefault("tolerance", 1.0)
+    report = recommend(mature, each)
+    assert _assumed(report.to_json()) == []
+    assert report.confidence == recommend(mature, shirt).confidence
+
+    one_left = copy.deepcopy(each)
+    del one_left["sizes"][0]["finished_measurements"]["chest_width"]["tolerance"]
+    assert _assumed(recommend(mature, one_left).to_json()) == [TOLERANCE_ASSUMED]
+
+    # The sleeves without a tolerance, and a profile without the arm to compare them with.
+    sleeves = copy.deepcopy(each)
+    for size in sleeves["sizes"]:
+        del size["finished_measurements"]["sleeve_length"]["tolerance"]
+    armless = copy.deepcopy(mature)
+    del armless["body"]["measurements"]["arm_length"]
+    assert _assumed(recommend(armless, sleeves).to_json()) == []
+    assert _assumed(recommend(mature, sleeves).to_json()) == [TOLERANCE_ASSUMED]
+
+
+def test_what_a_garment_leaves_out_counts_only_where_it_was_assumed(mature, cold, shirt):
+    """A cold start compares nothing of the garment, so it assumes nothing about it: the same
+    report, word for word, for a shirt that declares neither its fabric nor its tolerance. The
+    fabric changes only a girth, so an answer that compared lengths alone assumed nothing about
+    it either, until a girth is compared."""
+    import copy
+
+    neither = copy.deepcopy(shirt)
+    del neither["fabric"], neither["production_tolerance"]
+    for level in ("result_only", "explained", "scoped", "full"):
+        assert (
+            recommend(cold, neither, disclosure_level=level).to_json()
+            == recommend(cold, shirt, disclosure_level=level).to_json()
+        ), level
+
+    no_fabric = copy.deepcopy(shirt)
+    del no_fabric["fabric"]
+    lengths = copy.deepcopy(mature)
+    measurements = lengths["body"]["measurements"]
+    lengths["body"]["measurements"] = {
+        key: measurements[key] for key in ("shoulder_width", "arm_length")
+    }
+    assert _assumed(recommend(lengths, no_fabric).to_json()) == []
+    lengths["body"]["measurements"]["chest_circumference"] = measurements["chest_circumference"]
+    assert _assumed(recommend(lengths, no_fabric).to_json()) == [STRETCH_ASSUMED]
+
+
+def test_an_assumption_is_said_where_a_cap_hides_what_it_costs(mature, shirt):
+    """Held to the cold start ceiling, an answer about a shirt it calls too tight at the chest
+    is at 0.40 whatever the garment declares, so the 0.06 of two assumptions does not show. The
+    two are said all the same, at every level."""
+    import copy
+
+    broad = copy.deepcopy(mature)
+    broad["body"]["measurements"]["chest_circumference"]["value"] = 120
+    neither = copy.deepcopy(shirt)
+    del neither["fabric"], neither["production_tolerance"]
+
+    assert recommend(broad, shirt).confidence == 0.40
+    assert recommend(broad, neither).confidence == 0.40
+    for level in ("result_only", "explained", "scoped", "full"):
+        out = recommend(broad, neither, disclosure_level=level).to_json()
+        assert _assumed(out) == [STRETCH_ASSUMED, TOLERANCE_ASSUMED], level
+
+
+LEFT_OUT = "does not publish a measurement for these zones"
+SHIRT_KEYS = (
+    "neck_circumference",
+    "shoulder_width",
+    "chest_width",
+    "waist_width",
+    "sleeve_length",
+)
+
+
+def _as_its_owner_measures_it(shirt, *keys, sizes=("41",), category="shirts"):
+    """The example shirt as the builder writes one for its owner: no ease bands, no critical
+    zones, no production tolerance, and only the measurements and the sizes named."""
+    import copy
+
+    garment = copy.deepcopy(shirt)
+    del garment["intended_ease"], garment["critical_zones"], garment["production_tolerance"]
+    garment["category"] = category
+    garment["sizes"] = [size for size in garment["sizes"] if size["size_label"] in sizes]
+    for size in garment["sizes"]:
+        size["finished_measurements"] = {
+            key: value for key, value in size["finished_measurements"].items() if key in keys
+        }
+    return garment
+
+
+def test_a_garment_that_measures_less_is_not_surer_for_it(mature, shirt):
+    """It used to be. A zone the garment did not publish, unless critical, left every
+    denominator, and each zone compared against a category default cost 0.03: the one shirt its
+    owner measured at five places came out at 0.70, at the collar, the shoulders and the chest
+    at 0.77, and at the collar and the shoulders alone at 0.80. A zone a garment of its kind has
+    is now a line of the explanation whether it was published or not, named at every level and
+    never put down to the profile. No absolute number is asserted: the direction is the point."""
+    every_size = ("39", "40", "41", "42")
+    for sizes in (("41",), every_size):
+        five, three, two = (
+            recommend(mature, _as_its_owner_measures_it(shirt, *keys, sizes=sizes)).confidence
+            for keys in (SHIRT_KEYS, SHIRT_KEYS[:3], SHIRT_KEYS[:2])
+        )
+        assert five > three > two, sizes
+
+    # A sweater cut raglan leaves its shoulders and its sleeve out, as spec/02 asks: the answer
+    # says nothing of either, and is less sure than one about a sweater measured at four places.
+    knit = SHIRT_KEYS[1:]
+    four, raglan, chest_only = (
+        recommend(mature, _as_its_owner_measures_it(shirt, *keys, category="knitwear")).confidence
+        for keys in (knit, ("chest_width", "waist_width"), ("chest_width",))
+    )
+    assert four > raglan > chest_only
+
+    partial = _as_its_owner_measures_it(shirt, *SHIRT_KEYS[:3])
+    for level in ("result_only", "explained", "scoped", "full"):
+        caveats = recommend(mature, partial, disclosure_level=level).to_json()["caveats"]
+        assert [c for c in caveats if LEFT_OUT in c] == [
+            "The garment does not publish a measurement for these zones, so they were not "
+            "evaluated: sleeve_length, waist."
+        ], level
+        assert not any("critical zones" in c for c in caveats), level
+        assert not any("profile has no matching measurement" in c for c in caveats), level
+
+    out = recommend(mature, partial, disclosure_level="explained").to_json()
+    unknown = {
+        line["zone"]: line for line in out["explanation"] if line["assessment"] == "unknown"
+    }
+    assert set(unknown) == {"waist", "sleeve_length"}
+    assert not any(line["critical"] for line in unknown.values())
+
+    # A critical zone left out keeps the sentence of its own, and the two are not mixed.
+    no_shoulders = _as_its_owner_measures_it(shirt, "neck_circumference", "chest_width")
+    caveats = recommend(mature, no_shoulders).to_json()["caveats"]
+    assert any("critical zones" in c and c.endswith(": shoulders.") for c in caveats)
+    assert any(LEFT_OUT in c and c.endswith(": sleeve_length, waist.") for c in caveats)
+
+
+def test_an_ease_band_left_out_costs_once_whatever_the_sizes(mature, shirt):
+    """Judging a zone against a category default used to cost 0.03 for every size it was judged
+    on, up to 0.15: on the four sizes of the example the first band left out cost 0.12, the
+    second the rest, and the other three nothing. It is a share of the zones compared, so each
+    band costs what the one before did, on one size as on four. The bands declared here are the
+    category defaults themselves, so that leaving one out changes no judgement, only the cost."""
+    import copy
+
+    from agiofit.mapping import DEFAULT_EASE
+
+    declared = copy.deepcopy(shirt)
+    declared["intended_ease"] = {
+        zone: {"min": lo, "max": hi, "unit": "cm"}
+        for (category, zone), (lo, hi) in DEFAULT_EASE.items()
+        if category == "shirts"
+    }
+    assert set(declared["intended_ease"]) == set(shirt["intended_ease"])
+    zones = sorted(declared["intended_ease"])
+
+    for sizes in (("41",), ("39", "40", "41", "42")):
+        garment = copy.deepcopy(declared)
+        garment["sizes"] = [size for size in garment["sizes"] if size["size_label"] in sizes]
+        base = recommend(mature, garment)
+        for left_out, zone in enumerate(zones, start=1):
+            del garment["intended_ease"][zone]
+            report = recommend(mature, garment)
+            assert report.explanation == base.explanation, "the judgement is the one of before"
+            assert report.confidence == pytest.approx(base.confidence - 0.03 * left_out), (
+                sizes,
+                left_out,
+            )
+
+    # Nor is a band cheaper to leave out on a garment that publishes less: with no band at all,
+    # the shirt measured at the collar and the shoulders alone pays what the whole shirt pays.
+    for keys in (SHIRT_KEYS, SHIRT_KEYS[:2]):
+        bare = _as_its_owner_measures_it(shirt, *keys)
+        banded = copy.deepcopy(bare)
+        banded["intended_ease"] = copy.deepcopy(declared["intended_ease"])
+        cost = recommend(mature, banded).confidence - recommend(mature, bare).confidence
+        assert cost == pytest.approx(0.15), keys
+
+
+def test_a_zone_the_category_does_not_have_is_not_expected(mature, shirt):
+    """A zone left out counts only where something named it: the category, through the zones a
+    garment of its kind has, its critical zones or its default bands, or the garment itself. A
+    shirt is not marked down for its inseam, a top for a sleeve that may be short, and a
+    category with no list of its own for anything but what was named."""
+    import copy
+
+    from agiofit.mapping import expected_zones
+
+    def lines(garment):
+        # The report as the person has it: the example profile keeps its hips to itself, and a
+        # zone judged on them does not leave, published or not.
+        return {line.zone: line.assessment for line in recommend(mature, garment).explanation}
+
+    whole = lines(_as_its_owner_measures_it(shirt, *SHIRT_KEYS))
+    assert set(whole) == {"neck", "shoulders", "chest", "waist", "sleeve_length"}
+    assert "unknown" not in whole.values()
+
+    tee = lines(_as_its_owner_measures_it(shirt, "chest_width", "waist_width", category="tops"))
+    assert tee["hip"] == tee["shoulders"] == "unknown"
+    assert "sleeve_length" not in tee and "neck" not in tee
+
+    for category in ("jeans", "trousers"):
+        legs = lines(dict(_jeans(), category=category))
+        assert legs["thigh"] == legs["inseam"] == "unknown", category
+        assert not {"neck", "chest", "shoulders", "sleeve_length"} & set(legs), category
+
+    # Outerwear has no list of its own: only its critical zones are expected, and what the
+    # garment names. An ease band declared for a zone is a zone named.
+    coat = _as_its_owner_measures_it(shirt, "chest_width", category="outerwear")
+    assert lines(coat) == {"chest": "as_cut", "shoulders": "unknown"}
+    assert expected_zones("outerwear", coat) == {"chest", "shoulders"}
+    assert expected_zones("outerwear", dict(coat, critical_zones=["hip"])) == {"hip"}
+    lined = copy.deepcopy(coat)
+    lined["intended_ease"] = {"waist": {"min": 10, "max": 30, "unit": "cm"}}
+    assert lines(lined)["waist"] == "unknown"
+    caveats = recommend(mature, lined).to_json()["caveats"]
+    assert any(LEFT_OUT in c and c.endswith(": waist.") for c in caveats)
+    assert recommend(mature, lined).confidence < recommend(mature, coat).confidence
+
+
+def test_what_a_category_is_expected_to_publish_is_what_it_can_be_judged_on():
+    """The third table of category defaults, held to the other two. A zone expected of a category
+    has a mapping, or leaving it out would cost a document for something nothing here reads; and
+    a zone the category calls critical, or has a default band for, is one it is expected to
+    have."""
+    from agiofit.mapping import CRITICAL_ZONES, DEFAULT_EASE, EXPECTED_ZONES, MAPPED_ZONES
+
+    categories = set(
+        json.loads((SCHEMAS / "cut-profile.schema.json").read_text())["properties"]["category"]["enum"]
+    )
+    assert set(EXPECTED_ZONES) <= categories
+    for category, zones in EXPECTED_ZONES.items():
+        assert len(set(zones)) == len(zones), category
+        assert set(zones) <= MAPPED_ZONES, category
+        assert set(CRITICAL_ZONES.get(category, ())) & MAPPED_ZONES <= set(zones), category
+        assert {zone for (cat, zone) in DEFAULT_EASE if cat == category} <= set(zones), category
+
+
+def test_the_cli_writes_its_report_in_utf8_whatever_the_console(tmp_path, monkeypatch):
+    """On Windows, a report sent to a file with > was written in the console's code page,
+    cp1252, so an id or a size label with an accent made a JSON file that whoever opens it as
+    UTF-8 cannot read. The report is UTF-8 whatever the console."""
+    import io
+    import sys
+
+    from agiofit.cli import main
+
+    garment = json.loads((EXAMPLES / "cut-shirt.json").read_text(encoding="utf-8"))
+    garment["cut_profile_id"] = "maglificio-città:camicia:2026"
+    accented = tmp_path / "cut-shirt.json"
+    accented.write_text(json.dumps(garment, ensure_ascii=False), encoding="utf-8")
+    console = io.TextIOWrapper(io.BytesIO(), encoding="cp1252")
+    monkeypatch.setattr(sys, "stdout", console)
+
+    assert main([str(EXAMPLES / "profile-cold-start.json"), str(accented), "explained"]) == 0
+    console.flush()
+    report = json.loads(console.buffer.getvalue().decode("utf-8"))
+    assert report["cut_profile_id"] == "maglificio-città:camicia:2026"

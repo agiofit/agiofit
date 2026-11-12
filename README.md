@@ -71,8 +71,15 @@ Three artefacts, that's all:
 
 ## Quickstart
 
-**Without Python.** The Cut Profile builder at [agiofit.org/builder](https://agiofit.org/builder/) writes and validates a document in the
-browser from tape measurements. Nothing is uploaded.
+**Without Python.** Two builders write and validate a document in the browser, from tape
+measurements: the [Cut Profile builder](https://agiofit.org/builder/cut-profile/) for a garment
+laid flat, and the [Fit Profile builder](https://agiofit.org/builder/fit-profile/) for your own
+body, which keeps nothing, not even a draft. Nothing is uploaded. Comparing the two files is the
+one step that needs Python: with the reference implementation installed as below,
+
+```bash
+python -m agiofit.cli fit-profile.json <garment>.cut-profile.json explained
+```
 
 **With Python.**
 

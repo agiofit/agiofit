@@ -1,0 +1,107 @@
+name: How measuring went
+description: You measured a garment or yourself with a builder on agiofit.org. Tell us where the instructions held and where they did not, even if everything went well.
+title: "[measuring] "
+labels: ["measuring-report"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The measuring instructions of Agio Fit are not yet proven. Two people measuring the same
+        garment and getting different numbers, or a person stopping to wonder where the tape goes,
+        is the failure that matters most in this version, and only the people who measure can see it.
+
+        **We do not need your file, and never paste measurements of a person, yours included.**
+        Measurements of a garment are fine. You can write in English, Italian or French.
+
+  - type: dropdown
+    id: measured
+    attributes:
+      label: What did you measure
+      options:
+        - A shirt
+        - A T-shirt
+        - A pair of trousers
+        - A pair of jeans
+        - My body (Fit Profile builder)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: who
+    attributes:
+      label: You are
+      options:
+        - The owner of the garment
+        - A second-hand seller
+        - A brand or a manufacturer
+        - A retailer
+        - Someone else
+    validations:
+      required: false
+
+  - type: textarea
+    id: stopped
+    attributes:
+      label: Where did you stop to wonder how
+      description: The measurement, and what made you hesitate. "Nowhere" is a useful answer too.
+    validations:
+      required: true
+
+  - type: textarea
+    id: unclear
+    attributes:
+      label: An instruction or a drawing that misled you
+      description: Which one, what you understood, and what it turned out to mean.
+    validations:
+      required: false
+
+  - type: dropdown
+    id: twice
+    attributes:
+      label: Did you measure the same garment twice, or did someone else measure it too
+      options:
+        - "No"
+        - Yes, and the numbers agreed within about a centimetre
+        - Yes, and some numbers differed by more
+    validations:
+      required: false
+
+  - type: textarea
+    id: differed
+    attributes:
+      label: The numbers that differed
+      description: Only if they did, and only for a garment. The measurement name and the two numbers, and how each was taken if you know.
+    validations:
+      required: false
+
+  - type: textarea
+    id: missing
+    attributes:
+      label: What about the garment the file could not say
+      description: Something that matters to how it fits and has no place in the Cut Profile.
+    validations:
+      required: false
+
+  - type: textarea
+    id: compared
+    attributes:
+      label: If you compared the file with the reference implementation
+      description: The caveats you got, if one of them was about something the builder should have asked. Paste the caveats only, never the Fit Profile.
+    validations:
+      required: false
+
+  - type: input
+    id: published
+    attributes:
+      label: Where you published the file, if you did
+      description: A link to the listing or the page. Optional.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: no-body-data
+    attributes:
+      label: No measurements of a person
+      options:
+        - label: I have not written measurements of a person in this form, mine included.
+          required: true
