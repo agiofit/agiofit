@@ -11,6 +11,19 @@ when, read the commits.
 
 This version is still a draft. Nothing here is settled until it is merged.
 
+### Every document names the version it was written for
+
+**What changed.** `schema_version` is `0.2.0`, and the schemas are served under
+`https://agiofit.org/schemas/v0.2/`.
+
+**What breaks.** Every document written for 0.1. While the major version is zero a change of minor
+version is free to break (`03-matching.md`, requirement 6), so a consumer written for 0.2 refuses
+a document that says `0.1.0` instead of reading it as if nothing had moved.
+
+**What to do.** Apply the changes below that concern the document, then set `schema_version` to
+`0.2.0`. In that order: the number says the rest has been done. The 0.1 schemas stay where they
+were, unchanged, for documents that are not migrated.
+
 ### Measurement names are now a closed list
 
 **What changed.** The keys of `finished_measurements` used to accept any lowercase word. They are

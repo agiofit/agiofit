@@ -1,13 +1,13 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://agiofit.org/schemas/v0.1/match-report.schema.json",
+  "$id": "https://agiofit.org/schemas/v0.2/match-report.schema.json",
   "title": "Match Report",
   "description": "What the matcher reports after reading a Fit Profile and a Cut Profile. Designed to be the ONLY thing that crosses the boundary in the common case.",
   "type": "object",
   "required": ["schema_version", "cut_profile_id", "disclosure_level", "confidence", "computed_at"],
   "additionalProperties": false,
   "properties": {
-    "schema_version": { "const": "0.1.0" },
+    "schema_version": { "const": "0.2.0" },
     "cut_profile_id": { "type": "string" },
     "computed_at": { "type": "string", "format": "date-time" },
     "disclosure_level": { "enum": ["result_only", "explained", "scoped", "full"] },

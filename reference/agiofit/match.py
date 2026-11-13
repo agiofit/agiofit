@@ -25,7 +25,7 @@ from .mapping import (
     expected_zones,
 )
 
-SCHEMA_VERSION = "0.1.0"
+SCHEMA_VERSION = "0.2.0"
 IN_TO_CM = 2.54
 
 # A critical zone weighs three times as much as any other. One constant, because it is used

@@ -1,4 +1,4 @@
-# Agio Fit v0.1 — Overview
+# Agio Fit v0.2 — Overview
 
 **Status:** draft. Not stable. Nothing here should be implemented in production yet.
 
@@ -10,7 +10,7 @@ Three documents and the relationship between them:
 - a **Cut Profile**, published alongside a garment, describing how it is actually cut;
 - a **Match Report**, the only artefact that normally needs to cross a trust boundary.
 
-## Out of scope for v0.1
+## Out of scope for v0.2
 
 Authentication, storage, vault protocols, payment, catalogue, checkout, and body scanning. Where
 those are needed, this specification points at existing standards rather than inventing new ones.
@@ -49,11 +49,14 @@ are annotations and validate nothing. Where a schema's `description` and the pro
 specification disagree, the prose governs. The rule covers descriptions only: whether a document
 is valid is decided by the schema's validation keywords, exactly as written.
 
-The v0.1 schemas are served at fixed `$id`s and are not edited in place, so a schema fetched today
-is the same file as one fetched at launch. A description known to be wrong is listed here
-instead, and corrected in the next version of the schemas.
+A published schema is served at a fixed `$id` and is not edited in place, so a schema fetched
+today is the same file as one fetched the day it was published. A description known to be wrong
+is listed here instead, and corrected in the next version of the schemas.
 
-### Errata to the v0.1 schema descriptions
+### Errata to the schema descriptions
+
+These were found in the v0.1 schemas, which keep them. The schemas of this draft still carry them
+too, and each is to be corrected before v0.2 is published.
 
 1. **Cut Profile, `provenance.published_by`.** The description says consumers are expected to
    weight the values differently. No weight is assigned to them: the field names who makes the
@@ -64,7 +67,8 @@ instead, and corrected in the next version of the schemas.
    (`02-cut-profile.md`, Cut and shape).
 3. **Fit Profile, `disclosure_defaults`.** The description reads as a limit on how much a verifier
    may receive. `default_level` is a default, not a ceiling: a request may name another level, and
-   whether a verifier may ever receive more is for the vault to decide (`04-privacy.md`).
+   a report is serialised at the lower of the level asked and the level the person authorised
+   (`04-privacy.md`, `AC3`).
 4. **Fit Profile, `$defs.disclosure_level`.** The description says `scoped` adds the measurements
    the garment needs and `full` is the whole profile. `scoped` adds each zone's ease, `full` adds
    the band of each zone, and no level carries the profile itself (`04-privacy.md`).

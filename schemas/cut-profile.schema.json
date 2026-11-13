@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://agiofit.org/schemas/v0.1/cut-profile.schema.json",
+  "$id": "https://agiofit.org/schemas/v0.2/cut-profile.schema.json",
   "title": "Cut Profile",
   "description": "How a specific garment is actually cut, size by size. The counterpart a Fit Profile is matched against.",
   "type": "object",
@@ -30,7 +30,7 @@
   },
   "additionalProperties": false,
   "properties": {
-    "schema_version": { "const": "0.1.0" },
+    "schema_version": { "const": "0.2.0" },
     "cut_profile_id": {
       "type": "string",
       "description": "Identifies this document, and is the only link between a Match Report and the profile that produced it. No form is prescribed beyond being usable as an identifier: a readable key, a UUID and a URL are all fine. Uniqueness cannot be checked by a schema, which knows nothing of other documents, so this constrains the shape and not the collision.",

@@ -332,13 +332,34 @@ def test_leaving_tolerances_out_never_makes_an_answer_more_confident(mature, shi
     assert recommend(without, shirt).confidence <= recommend(mature, shirt).confidence
 
 
+def test_schemas_examples_and_reference_agree_on_the_version():
+    """One version, said in four places: what the reference implementation reads and writes,
+    what each schema requires, where each schema says it is served, and what the examples
+    declare. A schema that moved without its address, or an example left behind, is a document
+    that validates against nothing a reader can fetch."""
+    from agiofit.match import SCHEMA_VERSION
+
+    major, minor, _patch = SCHEMA_VERSION.split(".")
+    schemas = sorted(SCHEMAS.glob("*.schema.json"))
+    assert len(schemas) >= 3
+    for path in schemas:
+        schema = json.loads(path.read_text(encoding="utf-8"))
+        assert schema["properties"]["schema_version"] == {"const": SCHEMA_VERSION}, path.name
+        assert schema["$id"] == f"https://agiofit.org/schemas/v{major}.{minor}/{path.name}"
+    examples = sorted(EXAMPLES.glob("*.json"))
+    assert len(examples) >= 3
+    for path in examples:
+        document = json.loads(path.read_text(encoding="utf-8"))
+        assert document["schema_version"] == SCHEMA_VERSION, path.name
+
+
 def test_a_document_from_another_version_is_refused(mature, shirt):
     # Under a zero major, a minor bump is free to break: 0.2 moves fields 0.1 had
-    # elsewhere. Reading it anyway would mean looking for values where they no
-    # longer are and answering from whatever happened to be found.
+    # elsewhere. Reading a 0.1 document anyway would mean looking for values where they
+    # no longer are and answering from whatever happened to be found.
     import copy
 
-    for version in ("0.2.0", "1.0.0", "", "abc"):
+    for version in ("0.1.0", "0.3.0", "1.0.0", "", "abc"):
         garment = copy.deepcopy(shirt)
         garment["schema_version"] = version
         with pytest.raises(UnsupportedSchemaVersion):
@@ -351,7 +372,7 @@ def test_a_newer_patch_is_read_and_declared(mature, shirt):
     import copy
 
     garment = copy.deepcopy(shirt)
-    garment["schema_version"] = "0.1.4"
+    garment["schema_version"] = "0.2.4"
     out = recommend(mature, garment).to_json()
 
     assert out["recommended_size"] is not None
@@ -888,7 +909,7 @@ def test_with_no_level_requested_the_persons_default_applies(mature, shirt):
 def _trousers():
     """Two sizes of a plain trouser, enough to put the hips in play."""
     return {
-        "schema_version": "0.1.0",
+        "schema_version": "0.2.0",
         "cut_profile_id": "test-trousers-hips",
         "category": "trousers",
         "size_system": "IT",
@@ -1975,7 +1996,7 @@ def _jeans():
     """Two sizes of a jean laid flat, apart only at the waist: the hips are the same in both, so
     the waist alone decides between them."""
     return {
-        "schema_version": "0.1.0",
+        "schema_version": "0.2.0",
         "cut_profile_id": "test-jeans-waist",
         "category": "jeans",
         "size_system": "EU",
