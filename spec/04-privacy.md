@@ -178,7 +178,7 @@ that shows from outside. Some of it a test can run; the rest someone has to look
 | `LP1`, `LP2` | With the network recorded during a match, nothing sent out holds a value of the profile that is not in the report. The reference implementation has a test: matching runs with the network taken away. |
 | `DI1`, `DI2`, `CU3` | What comes back is one document that validates as a Match Report, with no identifier of the profile or the person in it. The reference implementation has a test for each. |
 | `CU1` | The profile the vault hands back validates as a Fit Profile and holds what was put in. A match leaves it unchanged, which the reference implementation tests. |
-| `AC1`, `AC2`, `AC3` | Without authorisation no report comes back, and nothing else does; with it, the report is at the lower of the level asked and the level granted. |
+| `AC1`, `AC2`, `AC3` | Without authorisation no report comes back, and nothing else does; with it, the report is at the lower of the level asked and the level granted. The reference implementation tests every combination of level asked, level granted and default. |
 | `AC4`, `CU2`, `LP3` | Shown by the application itself: what the person sees before authorising, that a deleted profile is gone, where the Cut Profile was fetched from. |
 | `VE1`, `VE2` | Shown by the verifier: the same treatment for a report from any vault, and no request for a profile or a measurement. |
 | `HV1` to `HV4` | From outside: a deleted profile is no longer answered for, and the time a backup is kept is stated before the person chooses. That a backup really expires is the operator's statement, which it answers for; no test shows it. |

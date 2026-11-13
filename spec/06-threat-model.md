@@ -65,9 +65,9 @@ they choose.
 
 **The over-permissioned consumer.** `full` disclosure exists for tailors and exceptional cases,
 and every incentive pushes consumers to ask for it routinely — the same pressure that made "allow
-all cookies" a reflex. The specification already says a consumer SHOULD justify `full`; v0.2 must
-decide whether the request shape gives that requirement teeth, for instance by making the
-justification a mandatory, displayable field of the request itself.
+all cookies" a reflex. v0.2 gives the requirement teeth: a request for `full` carries its
+justification as a field, a vault declines one that does not, and the person is shown it before
+they authorise (`03-matching.md`, `MR2`; `04-privacy.md`, `AC4`).
 
 ## What the model already blocks
 
@@ -102,3 +102,4 @@ Each is listed with where v0.2 answers it.
    One thread is left: `computed_at` is given to the second, and reports produced together for two
    verifiers carry the same value.
 4. A `full` disclosure request SHOULD carry its justification as data, not as documentation.
+   *Answered in `03-matching.md`, `MR2`:* it MUST, and a vault declines one that does not.

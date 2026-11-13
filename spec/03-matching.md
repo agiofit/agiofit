@@ -1,6 +1,7 @@
 # Matching and explanation
 
-Schema: `schemas/match-report.schema.json` · Reference: `reference/agiofit/match.py`
+Schemas: `schemas/match-report.schema.json`, `schemas/match-request.schema.json` · Reference:
+`reference/agiofit/match.py`
 
 The algorithm is **not normative**. Any implementer is free to do better, and most will. What is
 normative is the *shape of the answer*.
@@ -34,6 +35,60 @@ normative is the *shape of the answer*.
    skipped the most important measurement must not score like one that checked it. When what is
    missing is a measurement of the person's, the zone MAY be named only where an explanation is
    sent: at `result_only` its name would tell the verifier what the profile lacks.
+
+## The Match Request
+
+A Match Request is what a verifier sends to ask for a Match Report: which garment, at what level,
+and who is asking. It is a document, not a protocol. How it reaches a vault, and how the report
+gets back, is not said here.
+
+| Field | Required | What it says |
+|---|---|---|
+| `schema_version` | yes | The version the request is written for. |
+| `cut_profile_id` | yes | The Cut Profile to match against, by its own identifier. |
+| `cut_profile_uri` | no | Where the Cut Profile can be fetched, when it does not travel with the request. |
+| `verifier.name` | yes | Who is asking, in words the person is shown. At most 120 characters. |
+| `verifier.uri` | no | The verifier's own address. |
+| `disclosure_level` | no | The level asked. When absent, the person's default (`04-privacy.md`, `AC3`). |
+| `justification` | for `full` | Why that level is needed, in words the person is shown. At most 500 characters. |
+
+Both addresses are `https`, with no credentials, no query and no fragment. The schema is closed:
+a request carries these fields and no others. It has no identifier of its own, because a report
+would have to repeat it and pairing an answer with its request is the channel's business; and it
+carries no Cut Profile, which is fetched or handed over beside it.
+
+**MR1.** A Match Request names one Cut Profile by its `cut_profile_id`. A vault MUST answer about
+a document that carries that identifier, and MUST decline when the one it was given or fetched
+carries another.
+
+**MR2.** A request for `full` MUST carry a `justification`. A vault MUST decline one that does
+not, and MUST NOT answer at `full` a request that asked for less.
+
+**MR3.** This one binds the verifier. A verifier MUST send the same Match Request to every person
+it asks about one garment, at one level, with one justification, and MUST NOT put into any field,
+text or address, a customer, account or session identifier, or anything else that differs from
+one person to the next. A vault cannot tell whether a request it received is the one others
+received, and is not asked to: it is bound by `MR6` instead.
+
+**MR4.** `verifier` is what the verifier says of itself, not proof of who it is. A vault MUST show
+it to the person as a claim.
+
+**MR5.** The answer to a Match Request is a Match Report or nothing (`04-privacy.md`, `AC2`).
+
+**MR6.** A vault treats what a request says as something to show the person and nothing more. It
+MUST NOT copy any text or address from a request into a report, and MUST NOT fetch
+`cut_profile_uri`, or contact any address a request names, before the person has authorised that
+request.
+
+`MR3` is checked in two ways that should not be mistaken for each other. The schema says whether
+a request has the right shape: no field it does not name, addresses in the form allowed, text
+within its length. Any validator can do that, and a valid request has passed nothing more.
+Whether a verifier sends the same request to everyone is a fact about the verifier, and shows
+only when requests received by different people for the same garment are compared. A request can
+pass the first check and break the requirement.
+
+The reference implementation answers a request with `answer()`. The authorisation it takes is an
+input: it applies it, and does not show that a person gave it (`00-overview.md`).
 
 ## The reference approach, in outline
 

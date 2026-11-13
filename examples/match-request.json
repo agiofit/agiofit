@@ -1,0 +1,10 @@
+{
+  "schema_version": "0.2.0",
+  "cut_profile_id": "sartoria-esempio:OXF-CLASSIC:2026",
+  "cut_profile_uri": "https://sartoria-esempio.example/cut-profiles/oxf-classic-2026.json",
+  "verifier": {
+    "name": "Sartoria Esempio",
+    "uri": "https://sartoria-esempio.example"
+  },
+  "disclosure_level": "explained"
+}

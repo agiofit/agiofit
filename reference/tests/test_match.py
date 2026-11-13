@@ -13,6 +13,9 @@ from agiofit import (
     UnknownDisclosureLevel,
     UnreadableDate,
     UnsupportedSchemaVersion,
+    answer,
+    effective_level,
+    request_problems,
 )
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -2575,6 +2578,355 @@ def test_a_match_leaves_the_profile_as_it_was(mature, cold, shirt, tmp_path, mon
             recommend(profile, shirt, disclosure_level=level).to_json()
             assert (profile, shirt) == before, level
     assert list(tmp_path.iterdir()) == []
+
+
+# ----------------------------------------------------------------------- match request
+# The document a verifier sends to ask for a report, and what the reference implementation does
+# with one. The authorisation these tests pass is an input, as it is to the implementation: they
+# show what is done with an authorisation, not that a person gave it.
+
+MARK = "zq7-told-apart"
+
+
+@pytest.fixture
+def request_for_shirt():
+    return json.loads((EXAMPLES / "match-request.json").read_text(encoding="utf-8"))
+
+
+def _request_schema():
+    return json.loads((SCHEMAS / "match-request.schema.json").read_text(encoding="utf-8"))
+
+
+def _asking(request, level, justification="A tailor is altering this shirt."):
+    """The example request asking for a level, or for none; with its justification at full."""
+    import copy
+
+    asked = copy.deepcopy(request)
+    asked.pop("disclosure_level", None)
+    asked.pop("justification", None)
+    if level is not None:
+        asked["disclosure_level"] = level
+    if level == "full":
+        asked["justification"] = justification
+    return asked
+
+
+def _level_shown(sent):
+    """The highest level a serialised report gives away, from what it carries (spec/04)."""
+    lines = sent.get("explanation", [])
+    if any("intended_ease_cm" in line for line in lines):
+        return "full"
+    if any("ease_cm" in line for line in lines):
+        return "scoped"
+    if {"explanation", "alternatives", "based_on", "improve_by"} & set(sent):
+        return "explained"
+    return "result_only"
+
+
+def test_the_example_request_is_a_match_request(request_for_shirt, shirt):
+    jsonschema = pytest.importorskip("jsonschema")
+    jsonschema.validate(request_for_shirt, _request_schema(), format_checker=_formats(jsonschema))
+    assert request_problems(request_for_shirt, shirt) == []
+    assert request_for_shirt["cut_profile_id"] == shirt["cut_profile_id"]
+
+
+def test_the_schema_and_the_reference_agree_on_what_a_request_is(request_for_shirt):
+    """The shape of a request is checked twice: by the schema, for anyone, and by hand in the
+    reference implementation, which keeps no dependency. Each request here gets the same verdict
+    from both. This is the structural check, and all of it: that a verifier sends the same
+    request to everyone is a fact about the verifier, and no schema shows it."""
+    import copy
+
+    jsonschema = pytest.importorskip("jsonschema")
+    validator = jsonschema.Draft202012Validator(
+        _request_schema(), format_checker=_formats(jsonschema)
+    )
+
+    def changed(**fields):
+        request = copy.deepcopy(request_for_shirt)
+        for key, value in fields.items():
+            if value is None:
+                request.pop(key, None)
+            else:
+                request[key] = value
+        return request
+
+    good = [
+        request_for_shirt,
+        changed(disclosure_level=None),
+        changed(cut_profile_uri=None),
+        changed(verifier={"name": "Sartoria Esempio"}),
+        changed(disclosure_level="full", justification="A tailor is altering this shirt."),
+        changed(justification="Shown with the fit notes on the product page."),
+        changed(cut_profile_uri="https://shop.example"),
+        changed(cut_profile_uri="https://shop.example/a/b@c.json"),
+        changed(verifier={"name": "x" * 120}),
+        changed(disclosure_level="scoped", justification="j" * 500),
+    ]
+    bad = [
+        changed(customer_id="C-10442"),
+        changed(request_id="r-1"),
+        changed(schema_version="0.1.0"),
+        changed(schema_version="0.2.1"),
+        changed(schema_version=2),
+        changed(schema_version=None),
+        changed(cut_profile_id=None),
+        changed(cut_profile_id="short"),
+        changed(cut_profile_id="has a space in it"),
+        changed(cut_profile_uri="http://shop.example/cut.json"),
+        changed(cut_profile_uri="https://shop.example/cut.json?customer=10442"),
+        changed(cut_profile_uri="https://shop.example/cut.json#10442"),
+        changed(cut_profile_uri="https://user:secret@shop.example/cut.json"),
+        changed(cut_profile_uri="https://shop.example/cut .json"),
+        changed(cut_profile_uri="shop.example/cut.json"),
+        changed(cut_profile_uri=12),
+        changed(verifier=None),
+        changed(verifier="Sartoria Esempio"),
+        changed(verifier={}),
+        changed(verifier={"name": ""}),
+        changed(verifier={"name": "   "}),
+        changed(verifier={"name": "x" * 121}),
+        changed(verifier={"name": "Sartoria Esempio", "account": "10442"}),
+        changed(verifier={"name": "Sartoria Esempio", "uri": "https://shop.example/?u=10442"}),
+        changed(disclosure_level="everything"),
+        changed(disclosure_level="full"),
+        changed(justification=""),
+        changed(justification="j" * 501),
+        changed(justification=7),
+    ]
+    for request in good:
+        assert validator.is_valid(request), request
+        assert request_problems(request) == [], request
+    for request in bad:
+        assert not validator.is_valid(request), request
+        assert request_problems(request), request
+    assert request_problems(["not", "an", "object"]) and not validator.is_valid([])
+
+
+def test_the_request_schema_stands_alone_and_is_closed():
+    """Validating a request takes one file, as for the other three schemas: nothing in it points
+    to another. And it is closed at both levels, so a field about the person has nowhere to go."""
+    schema = _request_schema()
+
+    def refs(node):
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if key == "$ref":
+                    yield value
+                else:
+                    yield from refs(value)
+        elif isinstance(node, list):
+            for item in node:
+                yield from refs(item)
+
+    found = list(refs(schema))
+    assert found and all(ref.startswith("#/") for ref in found)
+    assert schema["additionalProperties"] is False
+    assert schema["properties"]["verifier"]["additionalProperties"] is False
+
+
+def test_the_levels_are_the_same_in_every_schema():
+    """Three schemas and the reference implementation name the disclosure levels, by copy rather
+    than by reference. The lists are the same, in the same order, least to most."""
+    from agiofit.match import DISCLOSURE_LEVELS
+
+    fit = json.loads((SCHEMAS / "fit-profile.schema.json").read_text(encoding="utf-8"))
+    report = json.loads((SCHEMAS / "match-report.schema.json").read_text(encoding="utf-8"))
+    lists = (
+        fit["$defs"]["disclosure_level"]["enum"],
+        report["properties"]["disclosure_level"]["enum"],
+        _request_schema()["properties"]["disclosure_level"]["enum"],
+    )
+    for levels in lists:
+        assert tuple(levels) == DISCLOSURE_LEVELS == EVERY_LEVEL
+
+
+def test_a_report_is_at_the_lower_of_the_level_asked_and_the_level_authorised(
+    mature, shirt, request_for_shirt
+):
+    """spec/04, AC3, in every combination: the level asked (none, or each of the four), the level
+    authorised (none in particular, or each of the four), and the person's default (none, or each
+    of the four). 125 cases. Where the request names no level the level asked is the default;
+    where the person authorised without naming one, the level authorised is the default; the
+    report is at the lower of the two, says so, and carries nothing a higher level would."""
+    import copy
+
+    order = EVERY_LEVEL.index
+    cases = 0
+    for default in (None,) + EVERY_LEVEL:
+        profile = copy.deepcopy(mature)
+        if default is None:
+            profile.pop("disclosure_defaults", None)
+        else:
+            profile["disclosure_defaults"] = {"default_level": default}
+        fallback = default or "result_only"
+        for asked in (None,) + EVERY_LEVEL:
+            request = _asking(request_for_shirt, asked)
+            for authorised in (True,) + EVERY_LEVEL:
+                granted = fallback if authorised is True else authorised
+                expected = min(asked or fallback, granted, key=order)
+                case = (default, asked, authorised)
+
+                assert effective_level(profile, asked, authorised) == expected, case
+                report = answer(profile, shirt, request, authorised=authorised)
+                assert report is not None, case
+                sent = report.to_json()
+                assert sent["disclosure_level"] == expected, case
+                assert order(_level_shown(sent)) <= order(expected), case
+                assert order(expected) <= order(asked or fallback), case
+                assert order(expected) <= order(granted), case
+                cases += 1
+    assert cases == 125
+
+    with pytest.raises(UnknownDisclosureLevel):
+        answer(mature, shirt, request_for_shirt, authorised="everything")
+    with pytest.raises(UnknownDisclosureLevel):
+        effective_level(mature, "everything", True)
+
+
+def test_without_an_authorisation_there_is_no_report(
+    mature, cold, shirt, request_for_shirt, capsys
+):
+    """Declining is sending no report: not an empty one, not one with a reason in it. A request
+    that was not authorised gets nothing, whatever it asks, and the command line prints nothing
+    where a report would go."""
+    from agiofit.cli import main
+
+    for profile in (mature, cold):
+        for asked in (None,) + EVERY_LEVEL:
+            request = _asking(request_for_shirt, asked)
+            assert answer(profile, shirt, request) is None
+            assert answer(profile, shirt, request, authorised=None) is None
+            assert answer(profile, shirt, request, authorised=False) is None
+
+    files = [str(EXAMPLES / "profile-mature.json"), str(EXAMPLES / "cut-shirt.json")]
+    assert main(files + ["--request", str(EXAMPLES / "match-request.json")]) != 0
+    printed = capsys.readouterr()
+    assert printed.out == ""
+    assert "No report" in printed.err
+
+    # An authorisation with no request to authorise, or a level beside a request, is a misuse.
+    assert main(files + ["--authorise"]) == 2
+    assert main(files + ["explained", "--request", str(EXAMPLES / "match-request.json")]) == 2
+    assert capsys.readouterr().out == ""
+
+
+def test_a_request_for_full_says_why_or_gets_nothing(mature, shirt, request_for_shirt):
+    """full is for a tailor and for exceptional cases, and the person is shown the reason before
+    they authorise it. A request for full with no justification is declined, even with full
+    authorised; with one, it is answered at full; and a request that asked for less is never
+    answered at full, whatever was authorised."""
+    silent = _asking(request_for_shirt, "full")
+    del silent["justification"]
+    assert answer(mature, shirt, silent, authorised="full") is None
+    assert answer(mature, shirt, silent, authorised=True) is None
+
+    said = _asking(request_for_shirt, "full")
+    assert answer(mature, shirt, said, authorised="full").to_json()["disclosure_level"] == "full"
+
+    for asked in (None, "result_only", "explained", "scoped"):
+        report = answer(mature, shirt, _asking(request_for_shirt, asked), authorised="full")
+        assert report.to_json()["disclosure_level"] != "full", asked
+
+
+def test_a_request_is_answered_about_the_cut_profile_it_names(mature, shirt, request_for_shirt):
+    """A request names one Cut Profile. Handed another, the reference implementation declines
+    rather than answer about a garment nobody asked about."""
+    import copy
+
+    other = copy.deepcopy(shirt)
+    other["cut_profile_id"] = "sartoria-esempio:OXF-SLIM:2026"
+    assert answer(mature, other, request_for_shirt, authorised=True) is None
+    assert request_problems(request_for_shirt, other)
+    assert answer(mature, shirt, request_for_shirt, authorised=True) is not None
+
+    elsewhere = copy.deepcopy(request_for_shirt)
+    elsewhere["cut_profile_id"] = other["cut_profile_id"]
+    assert answer(mature, shirt, elsewhere, authorised=True) is None
+    assert answer(mature, other, elsewhere, authorised=True) is not None
+
+
+def test_a_request_that_is_not_one_gets_nothing(mature, shirt, request_for_shirt):
+    """A request with a field it should not have, an address that could carry something about
+    the person, or no word on who is asking, is declined whatever was authorised."""
+    import copy
+
+    for change in (
+        {"customer_id": "C-10442"},
+        {"cut_profile_uri": "https://shop.example/cut.json?customer=10442"},
+        {"verifier": {"name": "Sartoria Esempio", "account": "10442"}},
+        {"verifier": {"name": ""}},
+        {"schema_version": "0.1.0"},
+        {"disclosure_level": "everything"},
+    ):
+        request = copy.deepcopy(request_for_shirt)
+        request.update(change)
+        assert answer(mature, shirt, request, authorised="full") is None, change
+    assert answer(mature, shirt, "not a request", authorised=True) is None
+
+
+def test_nothing_a_request_says_ends_up_in_the_report(mature, cold, shirt, request_for_shirt):
+    """A vault treats what a request says as something to show the person and nothing more. A
+    mark written into every text and address of a request is in no report, at any level: what a
+    report repeats is the identifier of the Cut Profile, which is the garment's and not the
+    request's."""
+    request = _asking(request_for_shirt, "full", justification=f"For the tailor, {MARK}.")
+    request["verifier"] = {"name": f"Atelier {MARK}", "uri": f"https://{MARK}.example"}
+    request["cut_profile_uri"] = f"https://shop.example/{MARK}/cut.json"
+    assert request_problems(request, shirt) == []
+
+    for profile in (mature, cold):
+        for authorised in (True,) + EVERY_LEVEL:
+            sent = json.dumps(answer(profile, shirt, request, authorised=authorised).to_json())
+            assert MARK not in sent, authorised
+            for said in ("Atelier", "tailor", "shop.example"):
+                assert said not in sent, (authorised, said)
+
+
+def test_the_whole_path_runs_on_one_machine_with_no_network(tmp_path, monkeypatch, capsys):
+    """What ROADMAP.md asks of this version: a profile in a file the person keeps, a request, an
+    authorisation given as input, and a report at the lower of the level asked and the level
+    authorised, with the network taken away and nothing else written or changed."""
+    import shutil
+    import socket
+
+    from agiofit.cli import main
+
+    def no_network(*args, **kwargs):
+        raise AssertionError("answering a request opened a socket")
+
+    monkeypatch.setattr(socket, "socket", no_network)
+    monkeypatch.setattr(socket, "create_connection", no_network)
+    monkeypatch.setattr(socket, "getaddrinfo", no_network)
+
+    kept = tmp_path / "kept"
+    kept.mkdir()
+    names = ("profile-mature.json", "cut-shirt.json", "match-request.json")
+    for name in names:
+        shutil.copy(EXAMPLES / name, kept / name)
+    before = {name: (kept / name).read_bytes() for name in names}
+    files = [str(kept / "profile-mature.json"), str(kept / "cut-shirt.json")]
+    asking = ["--request", str(kept / "match-request.json")]
+    monkeypatch.chdir(tmp_path)
+
+    # The example asks for explained; the person's default is result_only.
+    for flag, expected in (
+        ("--authorise", "result_only"),
+        ("--authorise=result_only", "result_only"),
+        ("--authorise=explained", "explained"),
+        ("--authorise=full", "explained"),
+    ):
+        assert main(files + asking + [flag]) == 0
+        printed = capsys.readouterr()
+        assert printed.err == ""
+        report = json.loads(printed.out)
+        assert report["disclosure_level"] == expected, flag
+        assert report["recommended_size"] == "41"
+        assert "verifier" not in printed.out and "sartoria-esempio.example" not in printed.out
+
+    assert {name: (kept / name).read_bytes() for name in names} == before
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["kept"]
+    assert sorted(path.name for path in kept.iterdir()) == sorted(names)
 
 
 def test_the_cli_writes_its_report_in_utf8_whatever_the_console(tmp_path, monkeypatch):

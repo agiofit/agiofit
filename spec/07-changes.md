@@ -11,6 +11,9 @@ when, read the commits.
 
 This version is still a draft. Nothing here is settled until it is merged.
 
+The Match Request (`03-matching.md`) is new in this version, so there is no document of that kind
+to migrate.
+
 ### Every document names the version it was written for
 
 **What changed.** `schema_version` is `0.2.0`, and the schemas are served under

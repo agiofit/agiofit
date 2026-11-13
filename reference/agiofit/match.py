@@ -120,10 +120,10 @@ def _disclosure_level(profile: dict, requested: str | None) -> str:
 
     The profile's default_level is the person's standing preference. Ignoring it meant that
     both example profiles, which declare result_only, came out at explained: more disclosure
-    than the person had written down. It is a default, not a ceiling. A request that names a
-    level still gets it, because in this implementation whoever asks is the vault, and
-    whether a verifier may ever receive more than the person's default is vault policy, not
-    something a matcher can decide.
+    than the person had written down. It is a default, not a ceiling. A level named here is
+    the level a report is serialised at: whoever calls this has already settled it. Settling
+    it for a Match Request, from what was asked and what the person authorised, is what
+    effective_level() and answer() are for.
     """
     if requested is not None:
         return _checked_level(requested, "The request")
@@ -131,6 +131,125 @@ def _disclosure_level(profile: dict, requested: str | None) -> str:
     if declared is not None:
         return _checked_level(declared, "The fit profile")
     return DISCLOSURE_LEVELS[0]
+
+
+def effective_level(profile: dict, asked: str | None, authorised: str | bool) -> str:
+    """The level a report is serialised at: the lower of the level asked and the level authorised.
+
+    Where the request names no level, the level asked is the person's default; where the person
+    authorised the request without naming one, pass True, and the level authorised is their
+    default too. So a report is never above what the verifier asked, never above what the person
+    granted, and at what they granted when that is less than was asked (spec/04, AC3).
+    """
+    default = _disclosure_level(profile, None)
+    requested = default if asked is None else _checked_level(asked, "The request")
+    granted = default if authorised is True else _checked_level(authorised, "The authorisation")
+    return min(requested, granted, key=DISCLOSURE_LEVELS.index)
+
+
+REQUEST_KEYS = frozenset(
+    {
+        "schema_version",
+        "cut_profile_id",
+        "cut_profile_uri",
+        "verifier",
+        "disclosure_level",
+        "justification",
+    }
+)
+VERIFIER_KEYS = frozenset({"name", "uri"})
+VERIFIER_NAME_MAX = 120
+JUSTIFICATION_MAX = 500
+_IDENTIFIER = re.compile(r"\S{8,}")
+# https, no credentials, no query, no fragment: where something that differs from one person to
+# the next usually travels.
+_ADDRESS = re.compile(r"https://[^\s/?#@]+(/[^\s?#]*)?")
+_NOT_AN_ADDRESS = " is not an https address free of credentials, query and fragment."
+
+
+def _address(value: object) -> bool:
+    return isinstance(value, str) and bool(_ADDRESS.fullmatch(value))
+
+
+def _text(value: object, longest: int) -> bool:
+    return isinstance(value, str) and 0 < len(value) <= longest and bool(value.strip())
+
+
+def request_problems(request: object, garment: dict | None = None) -> list[str]:
+    """What is wrong with a Match Request, for whoever runs the vault. Empty when nothing is.
+
+    The same checks as schemas/match-request.schema.json, written out by hand so that this
+    package keeps no dependency; a test holds the two to the same verdict. They look at the shape
+    of a request. That a verifier sends the same request to everyone (spec/03, MR3) is not
+    something a vault can see, and is not checked here.
+
+    None of this is for the verifier: declining is sending no report, with no reason (AC2).
+    """
+    if not isinstance(request, dict):
+        return ["The request is not a JSON object."]
+    problems = []
+    extra = sorted(set(request) - REQUEST_KEYS)
+    if extra:
+        problems.append(
+            "The request carries fields a Match Request does not have: " + ", ".join(extra) + "."
+        )
+    if request.get("schema_version") != SCHEMA_VERSION:
+        problems.append(f"The request is not written for version {SCHEMA_VERSION}.")
+    wanted = request.get("cut_profile_id")
+    if not isinstance(wanted, str) or not _IDENTIFIER.fullmatch(wanted):
+        problems.append("The request does not name a Cut Profile by a usable identifier.")
+    elif garment is not None and garment.get("cut_profile_id") != wanted:
+        problems.append("The Cut Profile at hand is not the one the request names.")
+    if "cut_profile_uri" in request and not _address(request["cut_profile_uri"]):
+        problems.append("cut_profile_uri" + _NOT_AN_ADDRESS)
+    verifier = request.get("verifier")
+    if not isinstance(verifier, dict):
+        problems.append("The request does not say who is asking.")
+    else:
+        if set(verifier) - VERIFIER_KEYS:
+            problems.append("verifier carries fields a Match Request does not have.")
+        if not _text(verifier.get("name"), VERIFIER_NAME_MAX):
+            problems.append("verifier.name is missing, blank or too long.")
+        if "uri" in verifier and not _address(verifier["uri"]):
+            problems.append("verifier.uri" + _NOT_AN_ADDRESS)
+    level = request.get("disclosure_level")
+    if "disclosure_level" in request and level not in DISCLOSURE_LEVELS:
+        problems.append("The request asks for a disclosure level this version does not have.")
+    if "justification" in request and not _text(request["justification"], JUSTIFICATION_MAX):
+        problems.append("justification is blank or too long.")
+    if level == "full" and "justification" not in request:
+        problems.append("The request asks for full and carries no justification.")
+    return problems
+
+
+def answer(
+    profile: dict,
+    garment: dict,
+    request: dict,
+    *,
+    authorised: str | bool | None = None,
+) -> MatchReport | None:
+    """Answer a Match Request with a report, or with nothing.
+
+    `authorised` is an input: None or False when the person has not authorised the request, True
+    when they have without naming a level, or the level they granted. This function applies it.
+    It does not collect it, show the request to anyone, or prove that a person gave it: that
+    takes an application with an interface, and this is not one (spec/04, AC4).
+
+    Nothing comes back without an authorisation, for a request that is not a Match Request, for
+    one that names another Cut Profile, or for one that asks for `full` and does not say why.
+    Declining is returning None: no reason, and nothing about the profile (AC2). Otherwise the
+    report is at the lower of the level asked and the level authorised (AC3). Nothing a request
+    says is copied into the report, and no address it names is contacted (spec/03, MR6).
+    """
+    if authorised is None or authorised is False:
+        return None
+    if authorised is not True:
+        _checked_level(authorised, "The authorisation")
+    if request_problems(request, garment):
+        return None
+    level = effective_level(profile, request.get("disclosure_level"), authorised)
+    return recommend(profile, garment, disclosure_level=level)
 
 
 def _version_notes(profile: dict, garment: dict) -> list[str]:

@@ -4,11 +4,13 @@
 
 ## Scope
 
-Three documents and the relationship between them:
+Three documents, the relationship between them, and the request that asks for the third:
 
 - a **Fit Profile**, owned by a person and portable across retailers;
 - a **Cut Profile**, published alongside a garment, describing how it is actually cut;
-- a **Match Report**, the only artefact that normally needs to cross a trust boundary.
+- a **Match Report**, the only artefact that normally needs to cross a trust boundary;
+- a **Match Request**, what a verifier sends to ask for a Match Report: which garment, at what
+  level, and who is asking.
 
 ## Out of scope for v0.2
 
@@ -39,8 +41,10 @@ schema that asks for a UUID.
 An implementation that keeps a Fit Profile for a person, or computes a match on their behalf, is
 a vault, and is held to the requirements of `04-privacy.md` under Custody and processing as well.
 One that asks for match reports is a verifier, and is held to `VE1` and `VE2` there. The
-reference implementation computes matches and holds nothing: it shows local processing and
-disclosure, and it is not a vault.
+reference implementation computes matches and holds nothing: it shows local processing, the level
+a report is serialised at, and disclosure, and it is not a vault. The authorisation it is given is
+an input supplied by whoever runs it: it applies that authorisation and does not show that a
+person gave it, which only an application with an interface can.
 
 ## Schema descriptions and this prose
 
@@ -89,7 +93,7 @@ too, and each is to be corrected before v0.2 is published.
 
 1. `01-fit-profile.md` — the person's side
 2. `02-cut-profile.md` — the garment's side
-3. `03-matching.md` — how a match report is produced and explained
+3. `03-matching.md` — how a match report is asked for, produced and explained
 4. `04-privacy.md` — disclosure levels, custody, and what must never leave
 5. `05-open-questions.md` — what is unresolved, honestly listed
 6. `06-threat-model.md` — who attacks a portable profile, and what that means for v0.2

@@ -15,8 +15,8 @@ python -m agiofit.cli ../examples/profile-cold-start.json ../examples/cut-shirt.
 | File | What it holds |
 |---|---|
 | `agiofit/mapping.py` | Zone tables, category defaults, preference shifts — and two statements of what this implementation cannot do: which zones it is able to evaluate at all, and which categories it has no critical zones for. The defaults a garment can override; the two statements it cannot. |
-| `agiofit/match.py` | Scoring, confidence, explanation, cold-start fallback, disclosure-level serialisation. |
-| `agiofit/cli.py` | Two arguments and a JSON document. |
+| `agiofit/match.py` | Scoring, confidence, explanation, cold-start fallback, disclosure-level serialisation, and the answer to a Match Request. |
+| `agiofit/cli.py` | Two arguments and a JSON document, or a Match Request and an authorisation. |
 
 ## What the tests are actually protecting
 
@@ -125,3 +125,19 @@ the same on one size as on four.
 
 Matching needs no network and leaves the profile as it found it. What leaves is one report, and
 it names neither the profile nor the person.
+
+A Match Request is answered with a report or with nothing: nothing without an authorisation, for
+a request that is not one, for one that names another Cut Profile, or for one that asks for `full`
+without saying why. The report is at the lower of the level asked and the level authorised, in
+every combination of the two and of the person's default. Nothing a request says ends up in the
+report.
+
+```bash
+python -m agiofit.cli ../examples/profile-mature.json ../examples/cut-shirt.json \
+    --request ../examples/match-request.json --authorise=explained
+```
+
+The authorisation is an input, given by whoever runs the command. The reference implementation
+applies it. It does not collect it, and does not show that a person gave it: that takes an
+application with an interface, and this is a reference for checking the specification, not that
+application.

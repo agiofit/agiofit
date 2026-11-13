@@ -12,7 +12,10 @@ from .match import (
     UnknownDisclosureLevel,
     UnreadableDate,
     UnsupportedSchemaVersion,
+    answer,
+    effective_level,
     recommend,
+    request_problems,
 )
 
 __all__ = [
@@ -23,6 +26,9 @@ __all__ = [
     "UnknownDisclosureLevel",
     "UnreadableDate",
     "UnsupportedSchemaVersion",
+    "answer",
+    "effective_level",
     "recommend",
+    "request_problems",
 ]
 __version__ = "0.1.0"
