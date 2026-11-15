@@ -1,0 +1,22 @@
+{
+  "title": "Agio Fit",
+  "upload_type": "software",
+  "description": "An open data model for a portable, person-owned garment fit profile: Fit Profile, Cut Profile, Match Report and Match Request schemas (JSON Schema 2020-12), specification documents, synthetic examples, and a zero-dependency Python reference implementation.",
+  "creators": [
+    {
+      "name": "Ferraioli, Antonio",
+      "orcid": "0009-0009-9344-1975"
+    }
+  ],
+  "license": "Apache-2.0",
+  "keywords": [
+    "fashion",
+    "garment-fit",
+    "data-model",
+    "json-schema",
+    "privacy",
+    "portability"
+  ],
+  "language": "eng",
+  "access_right": "open"
+}

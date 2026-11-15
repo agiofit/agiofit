@@ -395,6 +395,31 @@ def test_schemas_examples_and_reference_agree_on_the_version():
         assert document["schema_version"] == SCHEMA_VERSION, path.name
 
 
+def test_the_two_citation_files_say_the_same_thing():
+    """CITATION.cff is what a person and GitHub read; .zenodo.json is what Zenodo reads when it
+    archives a release, and when it is there Zenodo reads nothing else. It exists because Zenodo
+    takes one licence and CITATION.cff rightly lists two: the archive is filed under the licence
+    of the code, and the one of the specification is added to the record by hand. Everything
+    else the two files say, they say alike."""
+    cff = (ROOT / "CITATION.cff").read_text(encoding="utf-8")
+    zenodo = json.loads((ROOT / ".zenodo.json").read_text(encoding="utf-8"))
+
+    assert f'title: "{zenodo["title"]}"' in cff
+    assert f'abstract: "{zenodo["description"]}"' in cff
+    assert zenodo["upload_type"] == "software" and "type: software" in cff
+    assert [f"https://orcid.org/{c['orcid']}" in cff for c in zenodo["creators"]] == [True]
+    family, given = zenodo["creators"][0]["name"].split(", ")
+    assert f'family-names: "{family}"' in cff and f'given-names: "{given}"' in cff
+    listed = re.search(r"^keywords:\n((?:  - .+\n)+)", cff, re.MULTILINE).group(1)
+    assert zenodo["keywords"] == [line[4:] for line in listed.splitlines()]
+
+    # One licence, as a string: a list here is what stopped the archive of v0.2.0.
+    assert zenodo["license"] == "Apache-2.0"
+    assert "  - Apache-2.0\n  - CC-BY-4.0\n" in cff
+    # The version and the date are the release's own: Zenodo takes them from the tag.
+    assert "version" not in zenodo and "publication_date" not in zenodo
+
+
 def test_the_package_says_the_version_it_implements():
     """The package has a version of its own, in two places, and it is the version of the
     documents it reads: a package that calls itself 0.1 while refusing every 0.1 document says
