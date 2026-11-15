@@ -19,7 +19,7 @@
   recognition the project offers: contributing creates no right to payment, ownership, or a
   role in decisions beyond what `GOVERNANCE.md` describes.
 - Schema changes need an example document and a test.
-- Do not add a field without writing why it exists. Every field in v0.1 has a reason in `spec/`,
+- Do not add a field without writing why it exists. Every field has a reason in `spec/`,
   and that property is worth keeping.
 - Do not contribute measurement data about real people, yours included. Examples are synthetic and
   must stay that way.

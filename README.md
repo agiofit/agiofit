@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/agiofit/agiofit/actions/workflows/ci.yml/badge.svg)](https://github.com/agiofit/agiofit/actions/workflows/ci.yml) [![DOI](https://zenodo.org/badge/1331850704.svg)](https://doi.org/10.5281/zenodo.21922898)
 
-> **Status: v0.1 draft.** Nothing here is stable. Breaking changes are expected until v1.0.
+> **Status: v0.2 draft.** Nothing here is stable. Breaking changes are expected until v1.0.
 
 Specification, schemas and tools: **[agiofit.org](https://agiofit.org/)**. The schema `$id` URLs
 resolve there, and the [interactive guide](https://agiofit.org/guide/) walks through the model
@@ -31,19 +31,22 @@ An open data model for a **portable fit profile**, plus the garment-side counter
 matched against, plus a reference implementation that reads the two and produces an *explained*,
 correctable answer.
 
-Three artefacts, that's all:
+Four documents, that's all:
 
 | Artefact | File | What it describes |
 |---|---|---|
 | Fit Profile | `schemas/fit-profile.schema.json` | Body measurements, fit preferences, and real wear history — each value carrying its source and confidence |
 | Cut Profile | `schemas/cut-profile.schema.json` | Finished garment measurements, intended ease, stretch, production tolerance, and who published it |
 | Match Report | `schemas/match-report.schema.json` | The output: a size, alternatives, per-zone reasoning, and an honest confidence |
+| Match Request | `schemas/match-request.schema.json` | What a shop sends to ask for a Match Report: which garment, at what level, and who is asking. Nothing about the person |
 
-## What this project is **not** (v0.1)
+## What this project is **not**
 
-- **Not an identity system.** The profile is designed to live in a vault the person chooses. How
-  that vault authenticates, stores and shares is deferred to v0.2, where it maps onto W3C
-  Verifiable Credentials and OpenID4VCI rather than inventing anything.
+- **Not an identity system.** The profile is kept in a vault the person chooses, and a report
+  names neither the profile nor the person. The specification says what a vault has to guarantee
+  (`spec/04-privacy.md`), not who the person is or how they sign in.
+- **Not an application.** Nothing here is a vault, a wallet or an app a person is meant to use.
+  The command line tool is a reference for checking the specification.
 - **Not a body-scanning technology.** Measurements can come from a tape, a scan, an import, or an
   inference. The schema records *which*, and does not care how you got there.
 - **Not a protocol.** v0.3 proposes these as namespaced extensions to existing agentic commerce

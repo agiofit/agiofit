@@ -1,6 +1,6 @@
 # Roadmap
 
-## v0.1 — the data model (this release)
+## v0.1 — the data model
 
 Fit Profile, Cut Profile, Match Report, plus a reference implementation and
 tests. No vault, no protocol, no identity. Ships as a draft, breaks freely.
@@ -20,7 +20,12 @@ without asking the author a question, since every such question is a missing lin
 if the document is valid but the answer carries a caveat about something the builder should have
 asked for and did not.
 
-## v0.2 — custody the person controls
+**Status (November 2026): not met.** No one other than the author has yet produced a Cut Profile
+from a real garment. v0.2 is published without waiting for it, because it changes the Cut Profile
+format and a first tester should not be handed a format that is about to break. The criterion
+stands as written, and is now to be met with a v0.2 document.
+
+## v0.2 — custody the person controls (this release)
 
 Say what a vault has to guarantee, whoever builds it and wherever it runs: where the profile is
 kept, who may ask it for a match, where the match is computed, and what leaves. Define the Match

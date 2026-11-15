@@ -24,16 +24,28 @@ jobs:
           import sys
           import urllib.request
 
-          BASE = "https://agiofit.org/schemas/v0.1/"
-          SCHEMAS = [
-              "fit-profile.schema.json",
-              "cut-profile.schema.json",
-              "match-report.schema.json",
-          ]
+          # Every version ever published stays listed: a published $id is a promise.
+          PUBLISHED = {
+              "v0.1": [
+                  "fit-profile.schema.json",
+                  "cut-profile.schema.json",
+                  "match-report.schema.json",
+              ],
+              "v0.2": [
+                  "fit-profile.schema.json",
+                  "cut-profile.schema.json",
+                  "match-report.schema.json",
+                  "match-request.schema.json",
+              ],
+          }
 
           failures = []
-          for name in SCHEMAS:
-              url = BASE + name
+          urls = [
+              f"https://agiofit.org/schemas/{version}/{name}"
+              for version, names in PUBLISHED.items()
+              for name in names
+          ]
+          for url in urls:
               try:
                   with urllib.request.urlopen(url, timeout=30) as resp:
                       if resp.status != 200:

@@ -275,10 +275,12 @@ once for a whole document, while reliability belongs to each measurement. Weight
 would weight the label on the file instead of the numbers inside it. A consumer is free to
 weight it anyway, and should say so in its output.
 
-**`verified`.** Self-asserted. Setting it to true claims that an independent check exists, which
-`verification_method` should then describe. Nothing in this version prevents anyone from setting
-it, so a consumer should read it as a claim and not as a fact. Provenance that can be checked
-rather than claimed is deferred to a later version.
+**`verification_method`.** What was done to check the numbers, in plain words, when something
+was: a second person measuring again, a sample of units per size checked against the production
+tolerance, a file received from the brand. It is a statement by the publisher, and nothing in this
+version can confirm it, so a consumer should read it as a claim and not as a fact. There is no flag
+that says a profile is verified, because a flag could not tell those cases apart. Provenance that
+can be checked rather than claimed is deferred to a later version.
 
 ## Relationship to the Digital Product Passport
 

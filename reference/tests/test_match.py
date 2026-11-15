@@ -395,6 +395,22 @@ def test_schemas_examples_and_reference_agree_on_the_version():
         assert document["schema_version"] == SCHEMA_VERSION, path.name
 
 
+def test_the_package_says_the_version_it_implements():
+    """The package has a version of its own, in two places, and it is the version of the
+    documents it reads: a package that calls itself 0.1 while refusing every 0.1 document says
+    the wrong thing to whoever installs it."""
+    import agiofit
+    from agiofit.match import SCHEMA_VERSION
+
+    declared = re.search(
+        r'^version = "([^"]+)"$',
+        (ROOT / "reference" / "pyproject.toml").read_text(encoding="utf-8"),
+        re.MULTILINE,
+    ).group(1)
+    assert agiofit.__version__ == declared
+    assert agiofit.__version__.split(".")[:2] == SCHEMA_VERSION.split(".")[:2]
+
+
 def test_a_document_from_another_version_is_refused(mature, shirt):
     # Under a zero major, a minor bump is free to break: 0.2 moves fields 0.1 had
     # elsewhere. Reading a 0.1 document anyway would mean looking for values where they

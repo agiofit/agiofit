@@ -9,8 +9,6 @@ when, read the commits.
 
 ## From 0.1 to 0.2
 
-This version is still a draft. Nothing here is settled until it is merged.
-
 The Match Request (`03-matching.md`) is new in this version, so there is no document of that kind
 to migrate.
 

@@ -1,4 +1,4 @@
-"""Agio Fit — reference implementation of the portable fit profile (v0.1 draft).
+"""Agio Fit — reference implementation of the portable fit profile (v0.2 draft).
 
 Deliberately small. If this file grows past a few hundred lines, the specification is doing too
 little and the code is doing too much.
@@ -31,4 +31,4 @@ __all__ = [
     "recommend",
     "request_problems",
 ]
-__version__ = "0.1.0"
+__version__ = "0.2.0"
