@@ -59,8 +59,10 @@ is listed here instead, and corrected in the next version of the schemas.
 
 ### Errata to the schema descriptions
 
-These were found in the v0.1 schemas, which keep them. The schemas of this draft still carry them
-too, and each is to be corrected before v0.2 is published.
+These were found in the v0.1 schemas, which keep them: a published schema is not edited. The
+v0.2 schemas carry corrected descriptions, and two that were missing, for `units` in the Fit
+Profile and for the `score` of an alternative in the Match Report. Only descriptions changed, so
+no document became valid or invalid because of them.
 
 1. **Cut Profile, `provenance.published_by`.** The description says consumers are expected to
    weight the values differently. No weight is assigned to them: the field names who makes the

@@ -45,7 +45,7 @@
     },
     "cut": {
       "enum": ["very_fitted", "fitted", "regular", "relaxed", "oversized"],
-      "description": "The designer's intent, in the same vocabulary the person uses to state a preference. Deliberately shared with fit_preference so the two can be compared directly."
+      "description": "The designer's intent for the garment as a whole, on the same five-point scale a person uses to state a preference, so that a person reads both the same way. Descriptive: a consumer should not compute with it. What a consumer computes with is intended_ease, zone by zone."
     },
     "size_system": {
       "enum": ["EU", "IT", "FR", "UK", "US", "JP", "alpha", "numeric_waist_inseam", "brand_specific"]
@@ -199,7 +199,7 @@
       "properties": {
         "published_by": {
           "enum": ["brand", "manufacturer", "retailer", "marketplace_seller", "community", "measured_by_owner"],
-          "description": "A community-measured second-hand jacket and a brand-published spec are both useful and are not the same thing. Consumers are expected to weight them differently."
+          "description": "Who is making the claim, and nothing else. A community-measured second-hand jacket and a brand-published spec are both useful and are not the same thing, which is why the field is required. It is not a quality score and no weight is assigned to its values: a consumer that weights them anyway should say so in its output."
         },
         "verification_method": {
           "description": "What was actually done to check these numbers, in plain words, when something was. A remeasure by a second person, a sample of units per size checked against the production tolerance, and a claim that the file comes from the brand are three different things that no single flag could tell apart, which is why there is no boolean here. Nothing in this version can confirm any of it, so a reader should treat this as a statement by the publisher rather than as evidence.",

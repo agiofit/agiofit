@@ -23,7 +23,12 @@
         "additionalProperties": false,
         "properties": {
           "size_label": { "type": "string" },
-          "score": { "type": "number", "minimum": 0, "maximum": 1 },
+          "score": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "How well this size meets its ease bands, from 0 to 1. Not a confidence, and a consumer MUST NOT present it as one. The recommended size's own score is not carried."
+          },
           "note": { "type": "string" }
         }
       }
@@ -31,7 +36,7 @@
     "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
     "explanation": {
       "type": "array",
-      "description": "Per-zone reasoning. At disclosure_level 'explained', numeric fields MUST be omitted: ease values plus published garment measurements would let a verifier reconstruct body measurements, which defeats the point of not sending them.",
+      "description": "Per-zone reasoning. Absent at result_only. At explained it MUST NOT carry ease values: an ease plus the garment's published measurements gives the body measurement by subtraction, which defeats the point of not sending it. Ease appears from scoped, the band of a zone only at full, and no band at any level when the person lists preferences or history in never_share.",
       "items": {
         "type": "object",
         "required": ["zone", "assessment"],
@@ -53,7 +58,7 @@
     },
     "based_on": {
       "type": "object",
-      "description": "How the answer was reached, in counts rather than in content. Lets a person see that an answer rests on one self-reported measurement and nothing else.",
+      "description": "What the answer used, in counts rather than in content: the measurements the garment was compared on, the preferences that decided a zone, the past purchases that were read. It counts what the answer used, not what the profile holds, and says nothing about where a value came from. Not sent at result_only.",
       "additionalProperties": false,
       "properties": {
         "body_signals": { "type": "integer", "minimum": 0 },

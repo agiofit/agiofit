@@ -16,6 +16,7 @@
     "updated_at": { "type": "string", "format": "date-time" },
     "units": {
       "type": "object",
+      "description": "The units the person prefers to be shown. It says nothing about how a value is written: each measurement carries its own unit, and a consumer MUST read it in that unit. No value in this version has a mass, so producers should leave mass out.",
       "required": ["length"],
       "additionalProperties": false,
       "properties": {
@@ -59,7 +60,7 @@
     },
     "disclosure_defaults": {
       "type": "object",
-      "description": "The person's standing preference for how much a verifier may receive. Advisory: enforcement belongs to the vault, not to this document.",
+      "description": "The person's standing choices about disclosure. default_level is the level that applies when a request names none, or when the person authorises a request without naming one. It is a default, not a ceiling: a report is serialised at the lower of the level asked and the level the person authorised. Applying this is the vault's job, not this document's.",
       "additionalProperties": false,
       "properties": {
         "default_level": { "$ref": "#/$defs/disclosure_level" },
@@ -91,7 +92,7 @@
     },
     "disclosure_level": {
       "enum": ["result_only", "explained", "scoped", "full"],
-      "description": "result_only: the verifier receives a size and a confidence. explained: plus qualitative per-zone reasoning, no numbers. scoped: plus the specific measurements needed for this garment. full: the whole profile, and it should be rare."
+      "description": "How much of a Match Report a verifier receives, least to most. result_only: a size, a confidence and the caveats on the answer. explained: plus per-zone reasoning with no numbers, the alternatives, what the answer rests on and what would improve it. scoped: plus each zone's ease, from which the body measurements this garment needs follow. full: plus the band of each zone, and it should be rare. No level carries the profile itself."
     },
     "qualitative": {
       "type": "object",
@@ -132,7 +133,7 @@
         "category": { "$ref": "#/$defs/category" },
         "zone": { "$ref": "#/$defs/zone" },
         "preference": { "enum": ["very_fitted", "fitted", "regular", "relaxed", "oversized"] },
-        "strength": { "type": "number", "minimum": 0, "maximum": 1, "description": "How firmly the person holds this. A stated dislike of tight sleeves is not the same as a hard constraint." },
+        "strength": { "type": "number", "minimum": 0, "maximum": 1, "description": "How firmly the person holds this, from 0 to 1. A taste and a constraint are not the same statement: a producer should write a constraint the person states at 1, and a stated taste below it." },
         "source": { "enum": ["declared", "inferred_from_history"] },
         "confidence": { "$ref": "#/$defs/confidence" },
         "updated_at": { "type": "string", "format": "date-time" }

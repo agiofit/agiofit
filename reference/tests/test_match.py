@@ -234,6 +234,45 @@ def test_zone_vocabulary_stays_identical_across_schemas():
     assert cut["$defs"]["zone"]["enum"] == fit["$defs"]["zone"]["enum"]
 
 
+def test_the_schema_descriptions_no_longer_say_what_the_errata_list():
+    """spec/00-overview.md lists seven descriptions of the v0.1 schemas that say something the
+    specification does not. A description is prose and no test can say that it is right; this one
+    notices if a sentence known to be wrong comes back, if the sentence that replaced it goes, or
+    if a field that is easy to misread loses its description."""
+    texts = {
+        path.name: path.read_text(encoding="utf-8") for path in sorted(SCHEMAS.glob("*.json"))
+    }
+    assert len(texts) == 4
+    for wrong in (
+        "expected to weight them differently",
+        "so the two can be compared directly",
+        "how much a verifier may receive",
+        "the whole profile",
+        "is not the same as a hard constraint",
+        "numeric fields MUST be omitted",
+        "rests on one self-reported measurement",
+    ):
+        for name, text in texts.items():
+            assert wrong not in text, (name, wrong)
+
+    fit = json.loads(texts["fit-profile.schema.json"])
+    cut = json.loads(texts["cut-profile.schema.json"])
+    report = json.loads(texts["match-report.schema.json"])
+    alternative = report["properties"]["alternatives"]["items"]["properties"]
+    for field, says in (
+        (cut["properties"]["provenance"]["properties"]["published_by"], "no weight is assigned"),
+        (cut["properties"]["cut"], "should not compute with it"),
+        (fit["properties"]["disclosure_defaults"], "a default, not a ceiling"),
+        (fit["$defs"]["disclosure_level"], "No level carries the profile itself"),
+        (fit["$defs"]["fit_preference"]["properties"]["strength"], "states at 1"),
+        (report["properties"]["explanation"], "Absent at result_only"),
+        (report["properties"]["based_on"], "Not sent at result_only"),
+        (fit["properties"]["units"], "each measurement carries its own unit"),
+        (alternative["score"], "Not a confidence"),
+    ):
+        assert says in field["description"], says
+
+
 def _in_inches(measurement):
     """The same measurement, tolerance included, written in inches."""
     measurement["value"] /= 2.54
