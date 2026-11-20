@@ -47,6 +47,9 @@ Request, the document a verifier sends to ask for a report. Invent nothing that 
 **Not done if** any requirement of this version can be met only by a service, or if a vault that
 runs entirely on the person's device could not conform to all of it.
 
+**Status (November 2026): met.** Released as v0.2.0 on 15 November 2026. The four points
+above hold on `main`, and no requirement of this version needs a service.
+
 **Why this changed (November 2026).** The criterion used to read "a profile can be held in an
 existing wallet implementation and a match report returned without the profile ever leaving it".
 A survey of the wallets available in October 2026 found that the open ones can hold a document
@@ -65,10 +68,11 @@ part of this criterion (question 6 in `spec/05-open-questions.md`).
 
 ## v0.3 — protocol extensions
 
-Propose `catalog.cut_profile`, `wallet.fit_profile` and `fit.match_report` as namespaced
-extensions to the agentic commerce protocols. Contingent on question 3 in `spec/05-open-questions.md`:
-if UCP and ACP have no formal extension mechanism, this becomes a proposal to the standards rather
-than a module over them, which is a slower and more political road.
+Propose `catalog.cut_profile`, `fit.fit_profile` and `fit.match_report` as namespaced extensions
+to the agentic commerce protocols. Question 3 in `spec/05-open-questions.md` has an answer: UCP
+has a formal extension mechanism that needs no maintainer's approval, so on UCP this can be a
+module over the protocol; ACP has one too, still a draft, and nothing is proposed there until it
+is stable.
 
 ## v0.4 — the importer
 

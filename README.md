@@ -18,7 +18,7 @@ recommendation quality; it attacks the profile's address.
 There is also an asymmetry hiding in plain sight: to tell you a size, today's services want your
 measurements. A shop does not need your chest circumference to sell you a shirt — it needs a size.
 This model is built so the computation can happen where the profile lives and only the result
-travels, and its disclosure rules are enforced in serialisation, not by goodwill.
+leaves it, and its disclosure rules are enforced in serialisation, not by goodwill.
 
 Meanwhile the agentic commerce protocols (UCP, ACP, A2UI) are standardising catalogue, checkout
 and interface, and none of them has a place to put fit. If that stays true, the assistant that
@@ -42,6 +42,8 @@ Four documents, that's all:
 
 ## What this project is **not**
 
+- **Not a size-recommendation vendor.** The argument is ownership and portability, and it
+  is lost the moment this turns into another silo.
 - **Not an identity system.** The profile is kept in a vault the person chooses, and a report
   names neither the profile nor the person. The specification says what a vault has to guarantee
   (`spec/04-privacy.md`), not who the person is or how they sign in.
@@ -125,8 +127,8 @@ reference/   Python reference implementation and tests
 
 Apache 2.0 is chosen deliberately: size recommendation is a patent-dense field, and the express
 patent grant matters more here than it would elsewhere. Publishing the specification openly is
-also intended as defensive prior art. This is not legal advice, and the licensing should be
-reviewed by a lawyer before the first public release.
+also intended as defensive prior art. This is not legal advice, and the licensing has not yet
+been reviewed by a lawyer.
 
 `LICENSING.md` explains both choices in full.
 

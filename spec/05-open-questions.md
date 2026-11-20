@@ -15,7 +15,11 @@ Listed rather than hidden. Contributions on any of these are more useful than sc
    a voluntary publication and catalogue coverage becomes the binding constraint.
 
 3. **Can UCP and ACP carry namespaced extensions at all?** If they can, this becomes a module. If
-   they cannot, it stays an out-of-band API and the ambition changes shape.
+   they cannot, it stays an out-of-band API and the ambition changes shape. Answered in August
+   2026, unevenly. UCP has a formal extension mechanism that needs no maintainer's approval,
+   provided the schema is served from the extension's own domain, here `agiofit.org`. ACP has an
+   extensions framework too, still a draft. The question stays listed until the ACP side is
+   stable.
 
 4. **How do you bootstrap cut profiles?** Roughly: second-hand marketplaces where sellers
    already measure by hand, brands with return-rate pain and no vendor budget, and community
