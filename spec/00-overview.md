@@ -4,11 +4,11 @@
 
 ## Scope
 
-Three documents, the relationship between them, and the request that asks for the third:
+Four documents and the relationship between them:
 
 - a **Fit Profile**, owned by a person and portable across retailers;
 - a **Cut Profile**, published alongside a garment, describing how it is actually cut;
-- a **Match Report**, the only artefact that normally needs to cross a trust boundary;
+- a **Match Report**, the answer, and the only one of the four that leaves the vault;
 - a **Match Request**, what a verifier sends to ask for a Match Report: which garment, at what
   level, and who is asking.
 
